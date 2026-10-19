@@ -1,0 +1,48 @@
+name: build
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches:
+      - "*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install the cross compiler and shellcheck
+        run: |
+          sudo apt-get -q update
+          sudo apt-get install -y gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu shellcheck
+      - name: Build
+        run: make CROSS=aarch64-linux-gnu-
+      - name: Check the binary
+        run: |
+          # "go" jumps to the load address, so menu_main has to be there.
+          aarch64-linux-gnu-nm bootmenu.elf | grep -q "^0*3000000 T menu_main"
+          # x18 is u-boot's global data pointer and must stay untouched.
+          if aarch64-linux-gnu-objdump -d bootmenu.elf | grep -qwE "x18|w18"; then
+            echo "x18 is used"
+            exit 1
+          fi
+          # The raw image has no .data or .bss; menu.lds asserts that at link time.
+          ls -l bootmenu.bin
+      - name: Check the scripts
+        run: shellcheck -s sh install.sh
+      - uses: actions/upload-artifact@v7
+        with:
+          name: bootmenu
+          path: |
+            bootmenu.bin
+            bootlogo.bmp
+            bootmenu.scr
+            install.sh
+            NOTICE
+            LICENSE
+            fonts/LICENSE

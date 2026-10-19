@@ -1,0 +1,13 @@
+dreambox-bootmenu
+Boot menu for the Dreambox One and Two
+
+Copyright (C) 2026 OE-Alliance
+https://github.com/oe-alliance/dreambox-bootmenu
+
+This program is free software: you can redistribute it and/or modify it
+under the terms of the GNU General Public License version 3 as published by
+the Free Software Foundation, see LICENSE.
+
+bootmenu.bin contains glyphs rendered from the Roboto fonts by Google,
+licensed under the Apache License 2.0, see LICENSE.fonts (fonts/LICENSE in
+the source).

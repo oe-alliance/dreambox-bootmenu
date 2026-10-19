@@ -1,0 +1,70 @@
+name: Create Tag and Release on Version Change
+
+on:
+  push:
+    paths:
+      - menu.c
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: autotag-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  tag_and_release:
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Read version from file
+        id: get_version
+        run: |
+          VERSION=$(grep -oP '(?<=#define BOOTMENU_VERSION\t")[^"]+' menu.c)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+      - name: Check if tag already exists
+        id: check_tag
+        env:
+          VERSION: ${{ steps.get_version.outputs.version }}
+        run: |
+          if [ -z "$VERSION" ] || git show-ref --verify --quiet "refs/tags/v$VERSION"; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Build
+        if: steps.check_tag.outputs.skip != 'true'
+        run: |
+          sudo apt-get -q update
+          sudo apt-get install -y gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu
+          make CROSS=aarch64-linux-gnu-
+          cp fonts/LICENSE LICENSE.fonts
+      - name: Create and push tag
+        if: steps.check_tag.outputs.skip != 'true'
+        env:
+          VERSION: ${{ steps.get_version.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "v$VERSION"
+          git push origin "refs/tags/v$VERSION"
+      # install.sh downloads these from the latest release.
+      - name: Create GitHub Release
+        if: steps.check_tag.outputs.skip != 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.get_version.outputs.version }}
+          name: Release v${{ steps.get_version.outputs.version }}
+          generate_release_notes: true
+          files: |
+            bootmenu.bin
+            bootlogo.bmp
+            bootmenu.scr
+            install.sh
+            NOTICE
+            LICENSE
+            LICENSE.fonts
