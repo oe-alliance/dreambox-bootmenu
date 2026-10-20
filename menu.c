@@ -463,6 +463,8 @@ struct remote {
 	enum action held;	/* action of the key being held */
 	u64 seen;		/* last frame of the current press */
 	u64 next;		/* when a held key moves again */
+	u64 polled;		/* last look at the receiver */
+	int release;		/* OK still down from the start, keys wait for quiet */
 };
 
 static u64 ms(u32 value)
@@ -553,9 +555,18 @@ static enum action read_key(struct remote *rc)
 	}
 
 	count = ir_collect(&rc->last, len, MAX_EDGES);
+	now = ticks();
+	if (rc->release) {
+		/* Quiet counts only while listening, not while drawing. */
+		if (count || now - rc->polled > ms(50))
+			rc->seen = now;
+		else if (now - rc->seen > ms(PRESS_GAP_MS))
+			rc->release = 0;
+		rc->polled = now;
+		return ACT_NONE;
+	}
 	if (!count)
 		return ACT_NONE;
-	now = ticks();
 
 	if (ir_is_repeat(len, count)) {
 		if (rc->held == ACT_NONE || now - rc->seen > ms(PRESS_GAP_MS))
@@ -584,6 +595,25 @@ static enum action read_key(struct remote *rc)
 		return rc->held;
 	}
 	return ACT_NONE;
+}
+
+/*
+ * OK held while the box starts.  By now the press itself is long gone and
+ * only repeat frames come, which carry no key, so any held key counts; an OK
+ * pressed just now counts as well.  The press then stays with rc, so it does
+ * not choose an entry right away.
+ */
+static int ok_held(struct remote *rc)
+{
+	u32 len[MAX_EDGES];
+	int count = ir_collect(&rc->last, len, MAX_EDGES);
+
+	if (!count || (!ir_is_repeat(len, count) && rc_action(ir_decode(len, count)) != ACT_OK))
+		return 0;
+	rc->held = ACT_OK;
+	rc->seen = rc->polled = ticks();
+	rc->release = 1;
+	return 1;
 }
 
 static char *emit(char *p, const char *s)
@@ -675,7 +705,7 @@ int menu_main(int argc, char * const argv[])
 	struct screen screen;
 	unsigned long cfg_addr, result_addr, logo_addr;
 	u32 cfg_len;
-	int selected, remaining, redraw = 1;
+	int selected, remaining, redraw = 1, held = 0;
 	u64 deadline, second;
 	struct remote rc;
 
@@ -710,9 +740,12 @@ int menu_main(int argc, char * const argv[])
 	rc.held = ACT_NONE;
 	rc.seen = 0;
 	rc.next = 0;
+	rc.polled = 0;
+	rc.release = 0;
 	/*
 	 * A short look at the console before anything is drawn: should drawing
-	 * ever crash, "q" here still gets the box past the menu.
+	 * ever crash, "q" here still gets the box past the menu.  OK held on the
+	 * remote brings the menu without a countdown, also with timeout 0.
 	 */
 	second = ticks() + ms(300);
 	while (ticks() < second) {
@@ -722,6 +755,8 @@ int menu_main(int argc, char * const argv[])
 			puts("menu: aborted\n");
 			return 0;
 		}
+		if (!held && ok_held(&rc))
+			held = 1;
 	}
 
 	selected = cfg.def;
@@ -740,8 +775,11 @@ int menu_main(int argc, char * const argv[])
 	putdec(cfg.timeout);
 	puts(" s\n");
 
-	/* Like dm_bootmenu, timeout 0 shows no logo and no menu, but starts the default entry. */
-	if (!cfg.timeout) {
+	if (held) {
+		puts("menu: OK held, no countdown\n");
+		cfg.timeout = 0;
+	} else if (!cfg.timeout) {
+		/* Like dm_bootmenu, timeout 0 shows no logo and no menu, but starts the default entry. */
 		puts("menu: no menu, starting entry ");
 		putdec(selected + 1);
 		puts(" (");

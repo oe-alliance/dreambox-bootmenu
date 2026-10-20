@@ -84,7 +84,8 @@ sign, typographic quotes and dashes), anything else is drawn as `?`.
 It honours `default=` and `timeout=` from `bootconfig.txt`; the countdown
 runs down to 0 like the built-in menu. With `timeout=0` there is no logo and
 no menu, the default entry starts right away (the built-in menu then rejects
-the file and starts whatever u-boot has stored). Keys: up, down and OK on the
+the file and starts whatever u-boot has stored). OK held on the remote while
+the box starts always brings the menu, without a countdown. Keys: up, down and OK on the
 Dreambox remotes (NEC, addresses `0x32` and `0x34`), held keys repeat. On the
 serial console `u`, `d` and Return do the same, and `q` or Ctrl+C leaves the
 menu without a choice, so the built-in menu takes over. The console is also
