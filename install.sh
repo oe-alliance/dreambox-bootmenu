@@ -15,15 +15,17 @@
 #                  /data/bootmenu, e.g. /data/bootmenu/install.sh --no-download
 #                  after a new image in the second slot
 #   --remove       take the boot menu out again, the built-in one comes back
+#   --version <x>  install release <x> instead of the latest one, e.g. 1.1
 #
-# The files come from dreambox-bootmenu.tar.gz of the latest release, or of
-# BOOTMENU_RELEASE when set.
+# The files come from dreambox-bootmenu.tar.gz of the latest release, of the
+# release given with --version, or of BOOTMENU_RELEASE when set.
 #
 # u-boot runs /boot/autoexec.img of partition 6, the second slot. Images with
 # the Dreambox flash scripts build it from /etc/u-boot.scr.d/*.scr; the boot
 # menu adds bootmenu.scr there and rebuilds autoexec.img the same way.
 
-RELEASE=${BOOTMENU_RELEASE:-https://github.com/oe-alliance/dreambox-bootmenu/releases/latest/download}
+RELEASES=https://github.com/oe-alliance/dreambox-bootmenu/releases
+RELEASE=${BOOTMENU_RELEASE:-$RELEASES/latest/download}
 TARGET=/data/bootmenu
 ARCHIVE=dreambox-bootmenu.tar.gz
 FILES="bootmenu.bin bootlogo.bmp bootmenu.scr install.sh NOTICE LICENSE LICENSE.fonts"
@@ -72,12 +74,19 @@ setup_slot() {
 }
 
 MODE=install
-case "$1" in
-	--no-download) MODE=local ;;
-	--remove) MODE=remove ;;
-	"") ;;
-	*) fail "unknown option $1" ;;
-esac
+while [ $# -gt 0 ]; do
+	case "$1" in
+		--no-download) MODE=local ;;
+		--remove) MODE=remove ;;
+		--version)
+			[ -n "$2" ] || fail "--version needs a version, e.g. --version 1.1"
+			RELEASE=$RELEASES/download/v${2#v}
+			shift
+			;;
+		*) fail "unknown option $1" ;;
+	esac
+	shift
+done
 
 [ "$(id -u)" -eq 0 ] || fail "must run as root."
 case "$(cat /proc/stb/info/model 2>/dev/null)" in
@@ -94,7 +103,7 @@ if [ "$MODE" = install ]; then
 	work=$(mktemp -d "$TARGET.XXXXXX") || fail "cannot create a work directory in /data."
 	if ! download "$RELEASE/$ARCHIVE" "$work/$ARCHIVE" || ! tar -xzf "$work/$ARCHIVE" -C "$work"; then
 		rm -rf "$work"
-		fail "cannot download or unpack $ARCHIVE (curl or wget with https needed)."
+		fail "cannot download or unpack $RELEASE/$ARCHIVE (curl or wget with https needed)."
 	fi
 	for file in $FILES; do
 		[ -f "$work/dreambox-bootmenu/$file" ] && continue

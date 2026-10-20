@@ -45,7 +45,8 @@ puts `bootmenu.scr` into the image in the second slot and rebuilds its
 `/data` is mounted, that the box has the GPT multiboot layout and that the
 second slot holds an image. `--remove` (`| sh -s -- --remove`) takes the boot
 menu out again, `--no-download` only sets up the second slot from the files
-already in `/data/bootmenu`; the package uses that.
+already in `/data/bootmenu`; the package uses that. `--version 1.1`
+(`| sh -s -- --version 1.1`) installs that release instead of the latest.
 
 If the image in the second slot is flashed again, the boot menu is gone until
 it is set up again. `install.sh` stays in `/data/bootmenu`, so this works from
