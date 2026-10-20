@@ -738,6 +738,17 @@ int menu_main(int argc, char * const argv[])
 	putdec(cfg.timeout);
 	puts(" s\n");
 
+	/* Like dm_bootmenu, timeout 0 shows no menu, but starts the default entry. */
+	if (!cfg.timeout) {
+		puts("menu: no menu, starting entry ");
+		putdec(selected + 1);
+		puts(" (");
+		puts(cfg.entry[selected].title);
+		puts(")\n");
+		write_result(result_addr, &cfg, selected);
+		return 0;
+	}
+
 	for (;;) {
 		enum action act;
 

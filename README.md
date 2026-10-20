@@ -80,7 +80,9 @@ Latin-1, Latin Extended-A and the extra characters of Windows-1252 (euro
 sign, typographic quotes and dashes), anything else is drawn as `?`.
 
 It honours `default=` and `timeout=` from `bootconfig.txt`; the countdown
-runs down to 0 like the built-in menu. Keys: up, down and OK on the
+runs down to 0 like the built-in menu. With `timeout=0` there is no menu
+and the default entry starts right away (the built-in menu then rejects the
+file and starts whatever u-boot has stored). Keys: up, down and OK on the
 Dreambox remotes (NEC, addresses `0x32` and `0x34`), held keys repeat. On the
 serial console `u`, `d` and Return do the same, and `q` or Ctrl+C leaves the
 menu without a choice, so the built-in menu takes over. The console is also
