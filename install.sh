@@ -22,13 +22,17 @@
 #
 # u-boot runs /boot/autoexec.img of partition 6, the second slot. Images with
 # the Dreambox flash scripts build it from /etc/u-boot.scr.d/*.scr; the boot
-# menu adds bootmenu.scr there and rebuilds autoexec.img the same way.
+# menu adds the stub bootmenu.scr there and rebuilds autoexec.img the same
+# way. The stub only runs bootmenu.img from /data/bootmenu, so it never has to
+# change; openATV images bring it along already.
 
 RELEASES=https://github.com/oe-alliance/dreambox-bootmenu/releases
 RELEASE=${BOOTMENU_RELEASE:-$RELEASES/latest/download}
 TARGET=/data/bootmenu
 ARCHIVE=dreambox-bootmenu.tar.gz
 FILES="bootmenu.bin bootlogo.bmp bootmenu.scr install.sh NOTICE LICENSE LICENSE.fonts"
+# Releases before 1.2 have no bootmenu.img, their bootmenu.scr is the whole script.
+OPTIONAL="bootmenu.img"
 SLOT2=/dev/mmcblk0p6
 
 say() {
@@ -54,8 +58,10 @@ download() {
 setup_slot() {
 	root=$1
 	if [ "$MODE" = remove ]; then
+		# The stub of an image package stays; without /data/bootmenu it does nothing.
+		grep -qs "^/etc/u-boot.scr.d/bootmenu.scr" "$root"/var/lib/opkg/info/*.list && return 0
 		rm -f "$root/etc/u-boot.scr.d/bootmenu.scr"
-	elif cmp -s "$TARGET/bootmenu.scr" "$root/etc/u-boot.scr.d/bootmenu.scr" && grep -q bootmenu.bin "$root/boot/autoexec.img" 2>/dev/null; then
+	elif cmp -s "$TARGET/bootmenu.scr" "$root/etc/u-boot.scr.d/bootmenu.scr" && grep -q /bootmenu/ "$root/boot/autoexec.img" 2>/dev/null; then
 		return 0
 	else
 		cp "$TARGET/bootmenu.scr" "$root/etc/u-boot.scr.d/bootmenu.scr" || return 1
@@ -94,6 +100,7 @@ case "$(cat /proc/stb/info/model 2>/dev/null)" in
 	*) fail "only for the Dreambox One and Two." ;;
 esac
 grep -q " /data " /proc/mounts || fail "/data is not mounted."
+[ "$(dd if=/dev/mmcblk0 bs=1 skip=512 count=8 2>/dev/null)" = "EFI PART" ] || fail "no GPT on the eMMC, nothing to do."
 grep -q "^PARTNAME=dreambox-rootfs1$" /sys/class/block/mmcblk0p6/uevent 2>/dev/null || fail "no GPT multiboot layout, nothing to do."
 [ "$MODE" = remove ] || command -v mkimage >/dev/null 2>&1 || fail "mkimage is missing (package u-boot-mkimage or u-boot-tools-mkimage)."
 
@@ -113,11 +120,22 @@ if [ "$MODE" = install ]; then
 	for file in $FILES; do
 		mv "$work/dreambox-bootmenu/$file" "$TARGET/$file"
 	done
+	for file in $OPTIONAL; do
+		if [ -f "$work/dreambox-bootmenu/$file" ]; then
+			mv "$work/dreambox-bootmenu/$file" "$TARGET/$file"
+		else
+			rm -f "$TARGET/$file"
+		fi
+	done
 	rm -rf "$work"
 	chmod 0755 "$TARGET/install.sh"
 	say "files installed in $TARGET."
 fi
-[ "$MODE" = remove ] || [ -f "$TARGET/bootmenu.scr" ] || fail "$TARGET/bootmenu.scr is missing."
+if [ "$MODE" != remove ]; then
+	for file in bootmenu.bin bootmenu.scr; do
+		[ -f "$TARGET/$file" ] || fail "$TARGET/$file is missing."
+	done
+fi
 
 if grep -q "root=$SLOT2 " /proc/cmdline; then
 	setup_slot "" || fail "cannot set up the second slot."

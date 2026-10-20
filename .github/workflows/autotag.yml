@@ -40,12 +40,12 @@ jobs:
         if: steps.check_tag.outputs.skip != 'true'
         run: |
           sudo apt-get -q update
-          sudo apt-get install -y gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu
+          sudo apt-get install -y gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu u-boot-tools
           make CROSS=aarch64-linux-gnu-
           # Everything in one archive without the version in its name, so
           # install.sh finds it under releases/latest/download.
           mkdir dreambox-bootmenu
-          cp bootmenu.bin bootlogo.bmp bootmenu.scr install.sh NOTICE LICENSE dreambox-bootmenu/
+          cp bootmenu.bin bootmenu.img bootlogo.bmp bootmenu.scr install.sh NOTICE LICENSE dreambox-bootmenu/
           cp fonts/LICENSE dreambox-bootmenu/LICENSE.fonts
           tar -czf dreambox-bootmenu.tar.gz --owner=0 --group=0 --sort=name dreambox-bootmenu
       - name: Create and push tag
