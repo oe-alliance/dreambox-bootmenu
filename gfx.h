@@ -139,6 +139,39 @@ static void flush(struct screen *s, int y, int h)
 	asm volatile("dsb sy" : : : "memory");
 }
 
+static u32 le32(const u8 *p)
+{
+	return p[0] | p[1] << 8 | p[2] << 16 | (u32)p[3] << 24;
+}
+
+/*
+ * The logo as u-boot loaded it: a BMP of the screen's size in RGB565
+ * (16 bit, bitfields), so the rows are copied as they are.
+ */
+static int draw_logo(struct screen *s, const u8 *bmp)
+{
+	u32 off = le32(bmp + 10), w = le32(bmp + 18), h = le32(bmp + 22);
+	u32 bpp = bmp[28] | bmp[29] << 8, comp = le32(bmp + 30);
+	int y, x, top_down = (int)h < 0;
+
+	if (bmp[0] != 'B' || bmp[1] != 'M' || bpp != 16 || comp != 3 ||
+	    le32(bmp + 54) != 0xf800 || (int)w != s->width)
+		return 0;
+	if (top_down)
+		h = -h;
+	if ((int)h != s->height)
+		return 0;
+	for (y = 0; y < s->height; y++) {
+		const u8 *src = bmp + off + (unsigned long)(top_down ? y : s->height - 1 - y) * ((w * 2 + 3) & ~3U);
+		volatile u16 *line = s->fb + (long)y * s->stride;
+
+		for (x = 0; x < s->width; x++)
+			line[x] = src[2 * x] | src[2 * x + 1] << 8;
+	}
+	flush(s, 0, s->height);
+	return 1;
+}
+
 /* Next code point of a UTF-8 string; a broken sequence gives one '?'. */
 static u32 utf8_next(const char **s)
 {

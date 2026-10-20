@@ -7,7 +7,7 @@
  *
  * u-boot starts it with
  *
- *     go <load> <cfg> <cfglen> <result> [<fb> [<width> <height>]]
+ *     go <load> <cfg> <cfglen> <result> [<fb> [<width> <height> [<logo>]]]
  *
  * where <cfg>/<cfglen> describe a bootconfig.txt already read into memory and
  * <result> is the address the chosen entry is written to.  The program never
@@ -673,7 +673,7 @@ int menu_main(int argc, char * const argv[])
 {
 	struct config cfg;
 	struct screen screen;
-	unsigned long cfg_addr, result_addr;
+	unsigned long cfg_addr, result_addr, logo_addr;
 	u32 cfg_len;
 	int selected, remaining, redraw = 1;
 	u64 deadline, second;
@@ -682,7 +682,7 @@ int menu_main(int argc, char * const argv[])
 	/* "go" passes its own address as argv[0], the arguments follow. */
 	if (argc < 4) {
 		puts("menu: go <load> <cfg> <cfglen> <result> "
-		     "[<fb> [<width> <height>]]\n");
+		     "[<fb> [<width> <height> [<logo>]]]\n");
 		return 1;
 	}
 
@@ -695,6 +695,8 @@ int menu_main(int argc, char * const argv[])
 	screen.width = argc > 6 ? (int)parse_arg(argv[5]) : 1280;
 	screen.height = argc > 6 ? (int)parse_arg(argv[6]) : 720;
 	screen.stride = screen.width;
+	/* The logo is only loaded, it is drawn once the menu shows. */
+	logo_addr = argc > 7 ? parse_arg(argv[7]) : 0;
 
 	parse_config((const char *)cfg_addr, (int)cfg_len, &cfg);
 	if (!cfg.count) {
@@ -738,7 +740,7 @@ int menu_main(int argc, char * const argv[])
 	putdec(cfg.timeout);
 	puts(" s\n");
 
-	/* Like dm_bootmenu, timeout 0 shows no menu, but starts the default entry. */
+	/* Like dm_bootmenu, timeout 0 shows no logo and no menu, but starts the default entry. */
 	if (!cfg.timeout) {
 		puts("menu: no menu, starting entry ");
 		putdec(selected + 1);
@@ -748,6 +750,9 @@ int menu_main(int argc, char * const argv[])
 		write_result(result_addr, &cfg, selected);
 		return 0;
 	}
+
+	if (logo_addr && !draw_logo(&screen, (const u8 *)logo_addr))
+		puts("menu: no usable logo\n");
 
 	for (;;) {
 		enum action act;

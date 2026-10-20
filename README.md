@@ -64,11 +64,13 @@ any slot without a download, by hand or from a start script:
 
 A u-boot standalone program, started as
 
-    go <load> <cfg> <cfglen> <result> [<fb> [<width> <height>]]
+    go <load> <cfg> <cfglen> <result> [<fb> [<width> <height> [<logo>]]]
 
 - `cfg`/`cfglen`: `bootconfig.txt`, already loaded by the script
 - `result`: where the choice is written
 - `fb`: the framebuffer, `0x${initrd_high}` as u-boot set it up for the logo
+- `logo`: `bootlogo.bmp` as loaded by the script (RGB565, screen size); it is
+  drawn only when the menu shows
 
 The result is a magic (`0x4d454e55`), a zero word, the index and the length
 of a text block with `bm_sel`, `bm_title`, `bm_cmd` and `bm_arg` for
@@ -80,9 +82,9 @@ Latin-1, Latin Extended-A and the extra characters of Windows-1252 (euro
 sign, typographic quotes and dashes), anything else is drawn as `?`.
 
 It honours `default=` and `timeout=` from `bootconfig.txt`; the countdown
-runs down to 0 like the built-in menu. With `timeout=0` there is no menu
-and the default entry starts right away (the built-in menu then rejects the
-file and starts whatever u-boot has stored). Keys: up, down and OK on the
+runs down to 0 like the built-in menu. With `timeout=0` there is no logo and
+no menu, the default entry starts right away (the built-in menu then rejects
+the file and starts whatever u-boot has stored). Keys: up, down and OK on the
 Dreambox remotes (NEC, addresses `0x32` and `0x34`), held keys repeat. On the
 serial console `u`, `d` and Return do the same, and `q` or Ctrl+C leaves the
 menu without a choice, so the built-in menu takes over. The console is also
