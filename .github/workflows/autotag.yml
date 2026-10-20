@@ -38,11 +38,17 @@ jobs:
           fi
       - name: Build
         if: steps.check_tag.outputs.skip != 'true'
+        env:
+          VERSION: ${{ steps.get_version.outputs.version }}
         run: |
           sudo apt-get -q update
           sudo apt-get install -y gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu
           make CROSS=aarch64-linux-gnu-
           cp fonts/LICENSE LICENSE.fonts
+          # One archive with everything for packages, e.g. the OE recipe.
+          mkdir "dreambox-bootmenu-$VERSION"
+          cp bootmenu.bin bootlogo.bmp bootmenu.scr install.sh NOTICE LICENSE LICENSE.fonts "dreambox-bootmenu-$VERSION/"
+          tar -czf "dreambox-bootmenu-$VERSION.tar.gz" --owner=0 --group=0 --sort=name "dreambox-bootmenu-$VERSION"
       - name: Create and push tag
         if: steps.check_tag.outputs.skip != 'true'
         env:
@@ -68,3 +74,4 @@ jobs:
             NOTICE
             LICENSE
             LICENSE.fonts
+            dreambox-bootmenu-${{ steps.get_version.outputs.version }}.tar.gz

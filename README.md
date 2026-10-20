@@ -111,8 +111,10 @@ regenerates them and needs Pillow.
 
 The version is `BOOTMENU_VERSION` in `menu.c`. When it changes on master, a
 workflow tags `v<version>` and publishes a release with the files above;
-`install.sh` takes them from the latest release. Every push is built and
-checked by the build workflow.
+`install.sh` takes them from the latest release. The same files also come as
+`dreambox-bootmenu-<version>.tar.gz`, which packages such as the OE recipe
+use, so every installation runs the binary built by the release. Every push
+is built and checked by the build workflow.
 
 ## License
 
