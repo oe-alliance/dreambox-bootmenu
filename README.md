@@ -36,8 +36,8 @@ From the feed on openATV:
 On any other image with the Dreambox flash scripts (no package manager
 needed), as root:
 
-    curl -fsSL https://raw.githubusercontent.com/oe-alliance/dreambox-bootmenu/master/install.sh | sh
-    wget -qO- https://raw.githubusercontent.com/oe-alliance/dreambox-bootmenu/master/install.sh | sh
+    curl -fsSL https://github.com/oe-alliance/dreambox-bootmenu/releases/latest/download/install.sh | sh
+    wget -qO- https://github.com/oe-alliance/dreambox-bootmenu/releases/latest/download/install.sh | sh
 
 `install.sh` fetches the files of the latest release into `/data/bootmenu`,
 puts `bootmenu.scr` into the image in the second slot and rebuilds its

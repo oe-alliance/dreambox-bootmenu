@@ -7,8 +7,8 @@
 # Sets up the boot menu on a Dreambox One or Two with the GPT multiboot
 # layout, also on images without a package for it:
 #
-#   curl -fsSL https://raw.githubusercontent.com/oe-alliance/dreambox-bootmenu/master/install.sh | sh
-#   wget -qO- https://raw.githubusercontent.com/oe-alliance/dreambox-bootmenu/master/install.sh | sh
+#   curl -fsSL https://github.com/oe-alliance/dreambox-bootmenu/releases/latest/download/install.sh | sh
+#   wget -qO- https://github.com/oe-alliance/dreambox-bootmenu/releases/latest/download/install.sh | sh
 #
 # Options (with "| sh -s -- <option>" when piped):
 #   --no-download  only set up the second slot from the files in /data/bootmenu,
