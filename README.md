@@ -45,8 +45,15 @@ puts `bootmenu.scr` into the image in the second slot and rebuilds its
 `/data` is mounted, that the box has the GPT multiboot layout and that the
 second slot holds an image. `--remove` (`| sh -s -- --remove`) takes the boot
 menu out again, `--no-download` only sets up the second slot from the files
-already in `/data/bootmenu`; the package uses that. `--version 1.1`
-(`| sh -s -- --version 1.1`) installs that release instead of the latest.
+already in `/data/bootmenu`; the package uses that.
+
+An older release (1.1 or later) is installed with `--version`:
+
+    curl -fsSL https://github.com/oe-alliance/dreambox-bootmenu/releases/latest/download/install.sh | sh -s -- --version 1.1
+    wget -qO- https://github.com/oe-alliance/dreambox-bootmenu/releases/latest/download/install.sh | sh -s -- --version 1.1
+
+Without the option, or after `--remove` and a new install, the latest release
+is used again.
 
 If the image in the second slot is flashed again, the boot menu is gone until
 it is set up again. `install.sh` stays in `/data/bootmenu`, so this works from
