@@ -39,7 +39,7 @@ needed), as root:
     curl -fsSL https://github.com/oe-alliance/dreambox-bootmenu/releases/latest/download/install.sh | sh
     wget -qO- https://github.com/oe-alliance/dreambox-bootmenu/releases/latest/download/install.sh | sh
 
-`install.sh` fetches the files of the latest release into `/data/bootmenu`,
+`install.sh` unpacks the archive of the latest release into `/data/bootmenu`,
 puts `bootmenu.scr` into the image in the second slot and rebuilds its
 `autoexec.img`. It checks first that it runs on a Dreambox One or Two, that
 `/data` is mounted, that the box has the GPT multiboot layout and that the
@@ -110,11 +110,12 @@ regenerates them and needs Pillow.
 ## Releases
 
 The version is `BOOTMENU_VERSION` in `menu.c`. When it changes on master, a
-workflow tags `v<version>` and publishes a release with the files above;
-`install.sh` takes them from the latest release. The same files also come as
-`dreambox-bootmenu-<version>.tar.gz`, which packages such as the OE recipe
-use, so every installation runs the binary built by the release. Every push
-is built and checked by the build workflow.
+workflow tags `v<version>` and publishes a release with two files:
+`install.sh` for the one-liner and `dreambox-bootmenu.tar.gz` with all files
+above. `install.sh` unpacks the archive of the latest release, packages such
+as the OE recipe take the archive of their version, so every installation
+runs the binary built by the release. Every push is built and checked by the
+build workflow.
 
 ## License
 

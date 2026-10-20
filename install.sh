@@ -11,9 +11,13 @@
 #   wget -qO- https://github.com/oe-alliance/dreambox-bootmenu/releases/latest/download/install.sh | sh
 #
 # Options (with "| sh -s -- <option>" when piped):
-#   --no-download  only set up the second slot from the files in /data/bootmenu,
-#                  e.g. /data/bootmenu/install.sh --no-download after a new image
+#   --no-download  only set up the second slot from the files already in
+#                  /data/bootmenu, e.g. /data/bootmenu/install.sh --no-download
+#                  after a new image in the second slot
 #   --remove       take the boot menu out again, the built-in one comes back
+#
+# The files come from dreambox-bootmenu.tar.gz of the latest release, or of
+# BOOTMENU_RELEASE when set.
 #
 # u-boot runs /boot/autoexec.img of partition 6, the second slot. Images with
 # the Dreambox flash scripts build it from /etc/u-boot.scr.d/*.scr; the boot
@@ -21,6 +25,7 @@
 
 RELEASE=${BOOTMENU_RELEASE:-https://github.com/oe-alliance/dreambox-bootmenu/releases/latest/download}
 TARGET=/data/bootmenu
+ARCHIVE=dreambox-bootmenu.tar.gz
 FILES="bootmenu.bin bootlogo.bmp bootmenu.scr install.sh NOTICE LICENSE LICENSE.fonts"
 SLOT2=/dev/mmcblk0p6
 
@@ -85,15 +90,21 @@ grep -q "^PARTNAME=dreambox-rootfs1$" /sys/class/block/mmcblk0p6/uevent 2>/dev/n
 
 if [ "$MODE" = install ]; then
 	mkdir -p "$TARGET" || fail "cannot create $TARGET."
+	# Unpacked next to the target, so the files move over on the same file system.
+	work=$(mktemp -d "$TARGET.XXXXXX") || fail "cannot create a work directory in /data."
+	if ! download "$RELEASE/$ARCHIVE" "$work/$ARCHIVE" || ! tar -xzf "$work/$ARCHIVE" -C "$work"; then
+		rm -rf "$work"
+		fail "cannot download or unpack $ARCHIVE (curl or wget with https needed)."
+	fi
 	for file in $FILES; do
-		download "$RELEASE/$file" "$TARGET/$file.new" || {
-			rm -f "$TARGET"/*.new
-			fail "cannot download $file (curl or wget with https needed)."
-		}
+		[ -f "$work/dreambox-bootmenu/$file" ] && continue
+		rm -rf "$work"
+		fail "$file is missing in $ARCHIVE."
 	done
 	for file in $FILES; do
-		mv "$TARGET/$file.new" "$TARGET/$file"
+		mv "$work/dreambox-bootmenu/$file" "$TARGET/$file"
 	done
+	rm -rf "$work"
 	chmod 0755 "$TARGET/install.sh"
 	say "files installed in $TARGET."
 fi
