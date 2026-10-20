@@ -31,7 +31,7 @@ jobs:
             echo "x18 is used"
             exit 1
           fi
-          # The raw image has no .data or .bss; menu.lds asserts that at link time.
+          # The raw image has no .data or .bss; src/menu.lds asserts that at link time.
           ls -l bootmenu.bin
       - name: Check the scripts
         run: shellcheck -s sh install.sh

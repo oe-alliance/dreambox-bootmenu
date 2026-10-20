@@ -3,7 +3,7 @@ name: Create Tag and Release on Version Change
 on:
   push:
     paths:
-      - menu.c
+      - src/menu.c
     branches: [master]
   workflow_dispatch:
 
@@ -26,7 +26,7 @@ jobs:
       - name: Read version from file
         id: get_version
         run: |
-          VERSION=$(grep -oP '(?<=#define BOOTMENU_VERSION\t")[^"]+' menu.c)
+          VERSION=$(grep -oP '(?<=#define BOOTMENU_VERSION\t")[^"]+' src/menu.c)
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
       - name: Check if tag already exists
         id: check_tag
