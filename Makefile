@@ -23,7 +23,7 @@ MENU_LDFLAGS	= -nostdlib -static -no-pie -Wl,--build-id=none -Wl,--gc-sections \
 
 all: bootmenu.bin
 
-bootmenu.elf: menu.c gfx.h styles.h fonts.h fonts_bold.h menu.lds
+bootmenu.elf: menu.c gfx.h styles.h fonts.h fonts_bold.h fonts_small.h menu.lds
 	$(CC) $(MENU_CFLAGS) $(MENU_LDFLAGS) -o $@ menu.c -lgcc
 
 bootmenu.bin: bootmenu.elf
@@ -34,6 +34,7 @@ bootmenu.bin: bootmenu.elf
 fonts:
 	$(PYTHON) mkfont.py fonts/Roboto-Regular.ttf fonts.h font_sel:40 font_list:26 font_far:22 font_tiny:18
 	$(PYTHON) mkfont.py --ascii fonts/Roboto-Bold.ttf fonts_bold.h font_head:22
+	$(PYTHON) mkfont.py --ascii fonts/Roboto-Regular.ttf fonts_small.h font_micro:14
 
 clean:
 	rm -f bootmenu.elf bootmenu.bin

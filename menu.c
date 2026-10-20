@@ -363,6 +363,7 @@ static void parse_config(const char *buf, int len, struct config *cfg)
 #include "gfx.h"
 #include "fonts.h"
 #include "fonts_bold.h"
+#include "fonts_small.h"
 #include "styles.h"
 
 /*

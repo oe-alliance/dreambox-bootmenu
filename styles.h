@@ -73,11 +73,30 @@ static void boot_in(char *buf, int remaining)
 	*p = 0;
 }
 
+/* Left edge that centres t on cx by its ink, the advance leaves a gap on the right. */
+static int ink_left(const struct font *f, const char *t, int cx)
+{
+	int pen = 0, lo = 0x7fff, hi = -0x7fff;
+
+	while (*t) {
+		const struct glyph *g = glyph_of(f, utf8_next(&t));
+
+		if (g->w) {
+			if (pen + g->xoff < lo)
+				lo = pen + g->xoff;
+			if (pen + g->xoff + g->w > hi)
+				hi = pen + g->xoff + g->w;
+		}
+		pen += g->adv;
+	}
+	return lo > hi ? cx : cx - (lo + hi) / 2;
+}
 
 /* C: a wheel, the chosen entry large between two lines. */
 static void draw_menu(struct screen *s, struct config *cfg, int selected,
 		      int remaining)
 {
+	static const char version[] = "v" BOOTMENU_VERSION;
 	const int cx = 640, cy = 470;
 	static const struct { int off, dy; } near[] = {
 		{ -2, -104 }, { -1, -52 }, { 1, 74 }, { 2, 126 },
@@ -115,6 +134,13 @@ static void draw_menu(struct screen *s, struct config *cfg, int selected,
 		ring(s, cx, 660, 18, 3, RGB(50, 56, 48), C_GLOW, permille);
 		text_number(s, &font_tiny, cx - text_width(&font_tiny, remaining > 9 ? "00" : "0") / 2,
 			    660 - font_tiny.height / 2, remaining, RGB(220, 224, 214));
+	} else {
+		/* No countdown, or it was stopped: a full ring around "OK", waiting for it. */
+		ring(s, cx, 660, 18, 3, RGB(50, 56, 48), C_GLOW, 1000);
+		text(s, &font_tiny, ink_left(&font_tiny, "OK", cx), 660 - font_tiny.height / 2,
+		     "OK", RGB(220, 224, 214), s->width);
 	}
+	text(s, &font_micro, ink_left(&font_micro, version, cx), 688, version,
+	     RGB(90, 96, 86), s->width);
 	flush(s, MENU_TOP, s->height - MENU_TOP);
 }

@@ -85,7 +85,9 @@ It honours `default=` and `timeout=` from `bootconfig.txt`; the countdown
 runs down to 0 like the built-in menu. With `timeout=0` there is no logo and
 no menu, the default entry starts right away (the built-in menu then rejects
 the file and starts whatever u-boot has stored). OK held on the remote while
-the box starts always brings the menu, without a countdown. Keys: up, down and OK on the
+the box starts always brings the menu, without a countdown; a ring around
+"OK" then stands where the countdown would be, as it does once up or down
+stopped the countdown. The version shows below it. Keys: up, down and OK on the
 Dreambox remotes (NEC, addresses `0x32` and `0x34`), held keys repeat. On the
 serial console `u`, `d` and Return do the same, and `q` or Ctrl+C leaves the
 menu without a choice, so the built-in menu takes over. The console is also
@@ -100,9 +102,9 @@ global data pointer) and has no `.data` or `.bss`, so the raw image can be
 loaded and run as is at `0x03000000`. `bootmenu.scr` loads `bootconfig.txt`
 to `0x03800000`, well above the program.
 
-`fonts.h` and `fonts_bold.h` are generated from the Roboto fonts in `fonts/`
-(Apache License 2.0, see `fonts/LICENSE`); `make fonts` regenerates them and
-needs Pillow.
+`fonts.h`, `fonts_bold.h` and `fonts_small.h` are generated from the Roboto
+fonts in `fonts/` (Apache License 2.0, see `fonts/LICENSE`); `make fonts`
+regenerates them and needs Pillow.
 
 ## Releases
 
