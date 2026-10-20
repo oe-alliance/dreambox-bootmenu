@@ -1,5 +1,7 @@
 # Boot menu for the Dreambox One and Two
 
+![The boot menu on a Dreambox One](docs/screenshot.png)
+
 Replaces the boot menu built into the Dreambox u-boot (`dm_bootmenu`) on boxes
 with the GPT multiboot layout. It reads the same `/data/bootconfig.txt`, so
 nothing new has to be configured, but it is not limited to eight entries, shows
