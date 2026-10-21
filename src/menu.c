@@ -472,6 +472,8 @@ static u32 ir_decode(const u32 *len, int count)
 #define BT_UP		0x000020
 #define BT_OK		0x000040
 #define BT_DOWN		0x000080
+#define BT_LEFT		0x004000
+#define BT_RIGHT	0x400000
 #define BT_OTHER	0x1000000	/* a key in the other bytes */
 
 struct fp_rx {
@@ -536,7 +538,25 @@ static int fp_keys(struct fp_rx *fp, int *keys)
 	return 1;
 }
 
-enum action { ACT_NONE, ACT_UP, ACT_DOWN, ACT_OK, ACT_ABORT };
+enum action { ACT_NONE, ACT_UP, ACT_DOWN, ACT_OK, ACT_FIRST, ACT_LAST, ACT_ABORT };
+
+static const char *action_name(enum action act)
+{
+	switch (act) {
+	case ACT_UP:
+		return "up";
+	case ACT_DOWN:
+		return "down";
+	case ACT_OK:
+		return "ok";
+	case ACT_FIRST:
+		return "left";
+	case ACT_LAST:
+		return "right";
+	default:
+		return "unknown";
+	}
+}
 
 #define HOLD_DELAY_MS	400	/* held key starts to repeat after this */
 #define HOLD_RATE_MS	80	/* then at most this often, the remote repeats every 108 ms */
@@ -569,6 +589,10 @@ static enum action bt_action(int keys)
 		return ACT_DOWN;
 	if (keys & BT_OK)
 		return ACT_OK;
+	if (keys & BT_LEFT)
+		return ACT_FIRST;
+	if (keys & BT_RIGHT)
+		return ACT_LAST;
 	return ACT_NONE;
 }
 
@@ -637,12 +661,12 @@ static void ir_report(const u32 *len, int count, u32 code)
 /* Dreambox remotes, NEC with the address in the low byte. */
 static const struct {
 	u8 address;
-	u8 up, down, ok;
+	u8 up, down, ok, left, right;
 } remotes[] = {
-	{ 0x32, 0x11, 0x17, 0x14 },
-	{ 0x33, 0x11, 0x17, 0x14 },
-	{ 0x34, 0x11, 0x19, 0x15 },
-	{ 0x35, 0x11, 0x19, 0x15 },
+	{ 0x32, 0x11, 0x17, 0x14, 0x13, 0x15 },
+	{ 0x33, 0x11, 0x17, 0x14, 0x13, 0x15 },
+	{ 0x34, 0x11, 0x19, 0x15, 0x14, 0x16 },
+	{ 0x35, 0x11, 0x19, 0x15, 0x14, 0x16 },
 };
 
 static enum action rc_action(u32 code)
@@ -664,6 +688,10 @@ static enum action rc_action(u32 code)
 			return ACT_DOWN;
 		if (command == remotes[i].ok)
 			return ACT_OK;
+		if (command == remotes[i].left)
+			return ACT_FIRST;
+		if (command == remotes[i].right)
+			return ACT_LAST;
 	}
 	return ACT_NONE;
 }
@@ -688,6 +716,10 @@ static enum action read_key(struct remote *rc)
 			return ACT_UP;
 		if (c == 'd' || c == 'B')
 			return ACT_DOWN;
+		if (c == 'f' || c == 'D')
+			return ACT_FIRST;
+		if (c == 'l' || c == 'C')
+			return ACT_LAST;
 		if (c == '\r' || c == '\n' || c == ' ')
 			return ACT_OK;
 		if (c == 'q' || c == 0x03)
@@ -948,12 +980,8 @@ static void fp_report(const u8 *f, int n, char *p)
 		p = add(p, "  ");
 		if (!keys)
 			add(p, "released");
-		else if (bt_action(keys) == ACT_UP)
-			add(p, "up");
-		else if (bt_action(keys) == ACT_DOWN)
-			add(p, "down");
-		else if (bt_action(keys) == ACT_OK)
-			add(p, "ok");
+		else if (bt_action(keys) != ACT_NONE)
+			add(p, action_name(bt_action(keys)));
 		else
 			add(p, "other key");
 		return;
@@ -1010,7 +1038,7 @@ static void ir_test(struct screen *s, struct remote *rc)
 			p = add(p, "repeat");
 		} else {
 			enum action act = rc_action(code);
-			const char *name = act == ACT_UP ? "up" : act == ACT_DOWN ? "down" : act == ACT_OK ? "ok" : "unknown";
+			const char *name = action_name(act);
 
 			puts(" code ");
 			puthex(code);
@@ -1172,6 +1200,10 @@ int menu_main(int argc, char * const argv[])
 			redraw = 1;
 		} else if (act == ACT_DOWN) {
 			selected = selected + 1 < cfg.count ? selected + 1 : 0;
+			cfg.timeout = 0;
+			redraw = 1;
+		} else if (act == ACT_FIRST || act == ACT_LAST) {
+			selected = act == ACT_FIRST ? 0 : cfg.count - 1;
 			cfg.timeout = 0;
 			redraw = 1;
 		}
