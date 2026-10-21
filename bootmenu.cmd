@@ -4,6 +4,11 @@
 # Built into bootmenu.img, which lies in /data/bootmenu next to bootmenu.bin
 # and is run by the stub bootmenu.scr in the second slot. Script and program
 # are always updated together this way.
+# Without a video mode, e.g. a freshly flashed image that has not run yet,
+# the bootlogo snippet sets up neither the OSD nor the output; do it with
+# 1080p50 then, in the same order as the snippet. An empty value
+# drops out as an argument, so it is compared with a prefix.
+if test "x${outputmode}" = "x"; then setenv outputmode 1080p50hz; setenv hdmimode 1080p50hz; osd open; osd clear; bmp scale; vout output ${outputmode}; fi
 setenv bm_logo 0x04000000
 mw.l ${bm_logo} 0 1
 ext4load mmc 1:4 ${bm_logo} /bootmenu/bootlogo.bmp

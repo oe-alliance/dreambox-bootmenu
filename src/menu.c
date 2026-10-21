@@ -42,7 +42,7 @@ typedef unsigned long u64;
 
 #define RC_TOGGLE	0x80u		/* set in the second frame of a press */
 
-#define BOOTMENU_VERSION	"1.2"	/* a change here tags a release */
+#define BOOTMENU_VERSION	"1.3"	/* a change here tags a release */
 
 #define RESULT_MAGIC	0x4d454e55u	/* "MENU" */
 
