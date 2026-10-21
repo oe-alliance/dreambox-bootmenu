@@ -453,6 +453,89 @@ static u32 ir_decode(const u32 *len, int count)
 	return bits == 32 ? code : 0;
 }
 
+/*
+ * The front processor (nRF52) on the second AO UART sends frames
+ * 0x7f, tag, len, data[len], sum, sum of sums over tag, len and data.
+ * Tag 0x18 carries the keys of a Bluetooth remote as a bitmap of 6 bytes,
+ * all zero once released.  Linux leaves the UART as u-boot set it up.
+ */
+#define FP_BASE		0xff804000UL
+#define FP_CONTROL	0x08
+#define FP_BAUD		0x14
+#define FP_PIN_MUX	0x0000ff00u	/* AO_2/3 to this UART */
+#define FP_PIN_MUX_UART	0x00002200u
+#define FP_START	0x7f
+#define FP_TAG_KEYS	0x18
+#define FP_MAX		64
+
+/* Bits of fp_keys(): the third key byte, the first one << 8, the fifth << 16. */
+#define BT_UP		0x000020
+#define BT_OK		0x000040
+#define BT_DOWN		0x000080
+#define BT_OTHER	0x1000000	/* a key in the other bytes */
+
+struct fp_rx {
+	u8 buf[FP_MAX];
+	int pos;
+};
+
+/* Returns the length of a complete frame in buf, 0 while none is complete. */
+static int fp_poll(struct fp_rx *fp)
+{
+	while (!(readl(FP_BASE + UART_STATUS) & UART_RX_EMPTY)) {
+		u8 c = readl(FP_BASE + UART_RFIFO) & 0xff;
+
+		if (!fp->pos && c != FP_START)
+			continue;
+		fp->buf[fp->pos++] = c;
+		if (fp->pos >= 3 && fp->pos == 3 + fp->buf[2] + 2) {
+			int n = fp->pos;
+
+			fp->pos = 0;
+			return n;
+		}
+		if (fp->pos == FP_MAX)
+			fp->pos = 0;
+	}
+	return 0;
+}
+
+static int fp_checked(const u8 *f, int n)
+{
+	u8 sum = 0, sums = 0;
+	int i;
+
+	for (i = 1; i < n - 2; i++) {
+		sum += f[i];
+		sums += sum;
+	}
+	return f[n - 2] == sum && f[n - 1] == sums;
+}
+
+/* Frames from before the menu are dropped, a key in them is long gone. */
+static void fp_init(struct fp_rx *fp)
+{
+	u32 mux = readl(AO_RTI_PIN_MUX);
+
+	if ((mux & FP_PIN_MUX) != FP_PIN_MUX_UART)
+		writel(AO_RTI_PIN_MUX, (mux & ~FP_PIN_MUX) | FP_PIN_MUX_UART);
+	while (!(readl(FP_BASE + UART_STATUS) & UART_RX_EMPTY))
+		readl(FP_BASE + UART_RFIFO);
+	fp->pos = 0;
+}
+
+/* Returns 1 for a key frame and puts its keys in *keys. */
+static int fp_keys(struct fp_rx *fp, int *keys)
+{
+	int n = fp_poll(fp);
+	const u8 *f = fp->buf;
+
+	if (!n || f[1] != FP_TAG_KEYS || f[2] != 6 || !fp_checked(f, n))
+		return 0;
+	*keys = f[5] | f[3] << 8 | f[7] << 16 | (f[4] | f[6] | f[8] ? BT_OTHER : 0);
+	return 1;
+}
+
 enum action { ACT_NONE, ACT_UP, ACT_DOWN, ACT_OK, ACT_ABORT };
 
 #define HOLD_DELAY_MS	400	/* held key starts to repeat after this */
@@ -466,11 +549,66 @@ struct remote {
 	u64 next;		/* when a held key moves again */
 	u64 polled;		/* last look at the receiver */
 	int release;		/* OK still down from the start, keys wait for quiet */
+	struct fp_rx fp;	/* Bluetooth remote, through the front processor */
+	int bt;			/* held comes from the Bluetooth remote */
+	u64 bt_seen;		/* its last key frame */
 };
 
 static u64 ms(u32 value)
 {
 	return tick_rate() / 1000 * value;
+}
+
+#define BT_GAP_MS	250	/* no key frame for this long releases the key, as Linux does */
+
+static enum action bt_action(int keys)
+{
+	if (keys & BT_UP)
+		return ACT_UP;
+	if (keys & BT_DOWN)
+		return ACT_DOWN;
+	if (keys & BT_OK)
+		return ACT_OK;
+	return ACT_NONE;
+}
+
+/*
+ * The Bluetooth remote reports which keys are down whenever that changes and
+ * again while they stay down.  A key that comes down acts at once, one that
+ * stays down moves the bar again after HOLD_DELAY_MS, as with IR.
+ */
+static enum action bt_key(struct remote *rc, u64 now)
+{
+	int keys;
+	enum action act;
+
+	if (fp_keys(&rc->fp, &keys)) {
+		act = bt_action(keys);
+		if (act == ACT_NONE) {
+			if (rc->bt)
+				rc->held = ACT_NONE;
+			rc->bt = 0;
+			rc->release = 0;
+			return ACT_NONE;
+		}
+		rc->bt_seen = now;
+		if (!rc->bt || rc->held != act) {
+			rc->held = act;
+			rc->bt = 1;
+			rc->next = now + ms(HOLD_DELAY_MS);
+			return rc->release ? ACT_NONE : act;
+		}
+	} else if (rc->bt && now - rc->bt_seen > ms(BT_GAP_MS)) {
+		rc->held = ACT_NONE;
+		rc->bt = 0;
+		rc->release = 0;
+		return ACT_NONE;
+	}
+	if (rc->bt && !rc->release && (rc->held == ACT_UP || rc->held == ACT_DOWN) && now >= rc->next) {
+		rc->next = now + ms(HOLD_RATE_MS);
+		return rc->held;
+	}
+	return ACT_NONE;
 }
 
 /* 9 ms mark, 2.25 ms space, mark: the key is still down. */
@@ -557,6 +695,10 @@ static enum action read_key(struct remote *rc)
 		return ACT_NONE;
 	}
 
+	act = bt_key(rc, ticks());
+	if (act != ACT_NONE)
+		return act;
+
 	count = ir_collect(&rc->last, len, MAX_EDGES);
 	now = ticks();
 	if (rc->release) {
@@ -586,6 +728,7 @@ static enum action read_key(struct remote *rc)
 		if (!(command & RC_TOGGLE) || rc->held != act ||
 		    now - rc->seen > ms(PRESS_GAP_MS)) {
 			rc->held = act;
+			rc->bt = 0;
 			rc->seen = now;
 			rc->next = now + ms(HOLD_DELAY_MS);
 			return act;
@@ -604,13 +747,21 @@ static enum action read_key(struct remote *rc)
  * OK held while the box starts.  By now the press itself is long gone and
  * only repeat frames come, which carry no key, so any held key counts; an OK
  * pressed just now counts as well.  The press then stays with rc, so it does
- * not choose an entry right away.
+ * not choose an entry right away.  The Bluetooth remote keeps reporting OK.
  */
 static int ok_held(struct remote *rc)
 {
 	u32 len[MAX_EDGES];
-	int count = ir_collect(&rc->last, len, MAX_EDGES);
+	int count, keys;
 
+	if (fp_keys(&rc->fp, &keys) && bt_action(keys) == ACT_OK) {
+		rc->held = ACT_OK;
+		rc->bt = 1;
+		rc->bt_seen = rc->seen = rc->polled = ticks();
+		rc->release = 1;
+		return 1;
+	}
+	count = ir_collect(&rc->last, len, MAX_EDGES);
 	if (!count || (!ir_is_repeat(len, count) && rc_action(ir_decode(len, count)) != ACT_OK))
 		return 0;
 	rc->held = ACT_OK;
@@ -757,6 +908,62 @@ static void irtest_draw(struct screen *s, char lines[][64], int n, int left)
 	flush(s, MENU_TOP, s->height - MENU_TOP);
 }
 
+static void fp_log_state(void)
+{
+	puts("irtest: fp mux ");
+	puthex(readl(AO_RTI_PIN_MUX));
+	puts(" control ");
+	puthex(readl(FP_BASE + FP_CONTROL));
+	puts(" status ");
+	puthex(readl(FP_BASE + UART_STATUS));
+	puts(" baud ");
+	puthex(readl(FP_BASE + FP_BAUD));
+	putc('\n');
+}
+
+/* Logs a frame and writes its screen line to p. */
+static void fp_report(const u8 *f, int n, char *p)
+{
+	int i, ok = fp_checked(f, n);
+
+	puts("irtest: fp tag ");
+	puthex(f[1]);
+	puts(ok ? " ok" : " bad checksum");
+	puts(" data");
+	for (i = 3; i < n - 2; i++) {
+		putc(' ');
+		puthex(f[i]);
+	}
+	putc('\n');
+
+	p = add(p, "BT ");
+	p = add_hex(p, f[1], 2);
+	if (!ok) {
+		add(p, " bad checksum");
+		return;
+	}
+	if (f[1] == FP_TAG_KEYS && f[2] == 6) {
+		int keys = f[5] | f[3] << 8 | f[7] << 16 | (f[4] | f[6] | f[8] ? BT_OTHER : 0);
+
+		p = add(p, "  ");
+		if (!keys)
+			add(p, "released");
+		else if (bt_action(keys) == ACT_UP)
+			add(p, "up");
+		else if (bt_action(keys) == ACT_DOWN)
+			add(p, "down");
+		else if (bt_action(keys) == ACT_OK)
+			add(p, "ok");
+		else
+			add(p, "other key");
+		return;
+	}
+	for (i = 3; i < n - 2 && i < 9; i++) {
+		p = add(p, " ");
+		p = add_hex(p, f[i], 2);
+	}
+}
+
 static void ir_test(struct screen *s, struct remote *rc)
 {
 	char lines[IRTEST_LINES][64];
@@ -764,6 +971,7 @@ static void ir_test(struct screen *s, struct remote *rc)
 	int n = 0, left = IRTEST_SECONDS, i;
 	u64 second = ticks() + tick_rate();
 
+	fp_log_state();
 	puts("irtest: press 3x up, 3x down, 3x OK\n");
 	irtest_draw(s, lines, n, left);
 	while (left > 0) {
@@ -777,6 +985,15 @@ static void ir_test(struct screen *s, struct remote *rc)
 			second += tick_rate();
 			left--;
 			irtest_draw(s, lines, n, left);
+		}
+		count = fp_poll(&rc->fp);
+		if (count) {
+			p = lines[n % IRTEST_LINES];
+			*p = 0;
+			fp_report(rc->fp.buf, count, p);
+			n++;
+			irtest_draw(s, lines, n, left);
+			continue;
 		}
 		count = ir_collect(&rc->last, len, MAX_EDGES);
 		if (!count)
@@ -872,6 +1089,9 @@ int menu_main(int argc, char * const argv[])
 	rc.held = ACT_NONE;
 	rc.seen = 0;
 	rc.next = 0;
+	rc.bt = 0;
+	rc.bt_seen = 0;
+	fp_init(&rc.fp);
 #ifdef IRTEST
 	if (logo_addr)
 		draw_logo(&screen, (const u8 *)logo_addr);

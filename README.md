@@ -5,7 +5,8 @@
 Replaces the boot menu built into the Dreambox u-boot (`dm_bootmenu`) on boxes
 with the GPT multiboot layout. It reads the same `/data/bootconfig.txt`, so
 nothing new has to be configured, but it is not limited to eight entries, shows
-the Dreambox logo with a scrolling list and is driven by the Dreambox remotes.
+the Dreambox logo with a scrolling list and is driven by the Dreambox remotes,
+infrared and Bluetooth.
 
 ## How it hooks in
 
@@ -107,10 +108,13 @@ the box starts always brings the menu, without a countdown; a ring around
 "OK" then stands where the countdown would be, as it does once up or down
 stopped the countdown. The version shows below it.
 
-Keys: up, down and OK on the Dreambox remotes (NEC, addresses `0x32` to
-`0x35`), held keys repeat. On the serial console `u`, `d` and Return do the
-same, and `q` or Ctrl+C leaves the menu without a choice, so the built-in
-menu takes over. The console is also checked once before anything is drawn.
+Keys: up, down and OK on the Dreambox remotes, by infrared (NEC, addresses
+`0x32` to `0x35`) and by Bluetooth; held keys repeat. A Bluetooth remote
+reaches u-boot through the front processor of the box, which passes its key
+reports on over a UART of its own. On the serial console `u`, `d` and Return
+do the same, and `q` or Ctrl+C leaves the menu without a choice, so the
+built-in menu takes over. The console is also checked once before anything
+is drawn.
 
 ## Building
 
@@ -136,7 +140,8 @@ loads `bootconfig.txt` to `0x03800000`, well above the program.
 builds `bootmenu-irtest.bin`. Put in place of `/data/bootmenu/bootmenu.bin`, it
 shows no menu but asks for 3x up, 3x down and 3x OK and logs every IR frame
 to the serial console (115200 baud): the NEC code with address and command,
-or for any other protocol the lengths of all edges in microseconds. After 60 s,
+or for any other protocol the lengths of all edges in microseconds, and every
+frame of the front processor, with the keys of a Bluetooth remote. After 60 s,
 or `q` on the console, the built-in menu follows and the box starts as usual.
 With such a log another remote can be added.
 
