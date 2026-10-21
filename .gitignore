@@ -2,3 +2,5 @@ bootmenu.elf
 bootmenu.bin
 LICENSE.fonts
 bootmenu.img
+bootmenu-irtest.elf
+bootmenu-irtest.bin

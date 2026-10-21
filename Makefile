@@ -32,6 +32,17 @@ bootmenu.bin: bootmenu.elf
 	$(OBJCOPY) -O binary $< $@
 	@echo "$@: load address $(LOAD_ADDR), size $$(stat -c %s $@) bytes"
 
+# Remote test: logs every IR frame to the console instead of showing the menu,
+# then the built-in menu follows. Swapped in for bootmenu.bin by hand.
+irtest: bootmenu-irtest.bin
+
+bootmenu-irtest.elf: $(addprefix $(SRC)/,menu.c gfx.h styles.h fonts.h fonts_bold.h fonts_small.h menu.lds)
+	$(CC) $(MENU_CFLAGS) -DIRTEST $(MENU_LDFLAGS) -o $@ $(SRC)/menu.c -lgcc
+
+bootmenu-irtest.bin: bootmenu-irtest.elf
+	$(OBJCOPY) -O binary $< $@
+	@echo "$@: load address $(LOAD_ADDR), size $$(stat -c %s $@) bytes"
+
 # The script the stub in the second slot runs, without the comments like
 # update-autoexec builds autoexec.img.
 bootmenu.img: bootmenu.cmd
@@ -46,6 +57,6 @@ fonts:
 	$(PYTHON) mkfont.py --ascii fonts/Roboto-Regular.ttf $(SRC)/fonts_small.h font_micro:14
 
 clean:
-	rm -f bootmenu.elf bootmenu.bin bootmenu.img
+	rm -f bootmenu.elf bootmenu.bin bootmenu.img bootmenu-irtest.elf bootmenu-irtest.bin
 
-.PHONY: all fonts clean
+.PHONY: all irtest fonts clean

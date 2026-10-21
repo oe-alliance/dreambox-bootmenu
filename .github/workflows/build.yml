@@ -21,7 +21,7 @@ jobs:
           sudo apt-get -q update
           sudo apt-get install -y gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu u-boot-tools shellcheck
       - name: Build
-        run: make CROSS=aarch64-linux-gnu-
+        run: make CROSS=aarch64-linux-gnu- all irtest
       - name: Check the binary
         run: |
           # "go" jumps to the load address, so menu_main has to be there.
@@ -40,6 +40,7 @@ jobs:
           name: bootmenu
           path: |
             bootmenu.bin
+            bootmenu-irtest.bin
             bootmenu.img
             bootlogo.bmp
             bootmenu.scr

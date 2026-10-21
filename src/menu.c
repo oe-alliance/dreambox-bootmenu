@@ -698,6 +698,135 @@ static void write_result(unsigned long addr, struct config *cfg, int selected)
 	writel(addr, RESULT_MAGIC);
 }
 
+#ifdef IRTEST
+/*
+ * Remote test build: logs every frame to the console and shows the last ones,
+ * selects nothing and ends after IRTEST_SECONDS, so the built-in menu follows.
+ */
+#define IRTEST_SECONDS	60
+#define IRTEST_LINES	6
+
+static char *add(char *p, const char *t)
+{
+	while (*t)
+		*p++ = *t++;
+	*p = 0;
+	return p;
+}
+
+static char *add_hex(char *p, u32 v, int digits)
+{
+	static const char hex[] = "0123456789abcdef";
+
+	p = add(p, "0x");
+	while (digits--)
+		*p++ = hex[(v >> (4 * digits)) & 0xf];
+	*p = 0;
+	return p;
+}
+
+static char *add_dec(char *p, int v)
+{
+	char num[12];
+	int k = 11;
+
+	num[k] = 0;
+	do {
+		num[--k] = (char)('0' + v % 10);
+		v /= 10;
+	} while (v);
+	return add(p, num + k);
+}
+
+static void irtest_draw(struct screen *s, char lines[][64], int n, int left)
+{
+	const u32 fg = RGB(220, 224, 214), dim = RGB(130, 136, 126);
+	char buf[40], *p;
+	int i, first = n > IRTEST_LINES ? n - IRTEST_LINES : 0;
+
+	fill(s, 0, MENU_TOP, s->width, s->height - MENU_TOP, C_BLACK);
+	text(s, &font_head, 640 - text_width(&font_head, "Remote test") / 2, 310, "Remote test", fg, s->width);
+	text(s, &font_far, 640 - text_width(&font_far, "Press: 3x up, 3x down, 3x OK") / 2, 350,
+	     "Press: 3x up, 3x down, 3x OK", fg, s->width);
+	for (i = first; i < n; i++)
+		text(s, &font_far, 380, 400 + (i - first) * 36, lines[i % IRTEST_LINES], i == n - 1 ? fg : dim, s->width);
+	p = add(buf, "ends in ");
+	p = add_dec(p, left);
+	add(p, " s");
+	text(s, &font_far, 640 - text_width(&font_far, buf) / 2, 650, buf, dim, s->width);
+	flush(s, MENU_TOP, s->height - MENU_TOP);
+}
+
+static void ir_test(struct screen *s, struct remote *rc)
+{
+	char lines[IRTEST_LINES][64];
+	u32 len[MAX_EDGES];
+	int n = 0, left = IRTEST_SECONDS, i;
+	u64 second = ticks() + tick_rate();
+
+	puts("irtest: press 3x up, 3x down, 3x OK\n");
+	irtest_draw(s, lines, n, left);
+	while (left > 0) {
+		int count, c = serial_getc();
+		u32 code;
+		char *p;
+
+		if (c == 'q' || c == 0x03)
+			break;
+		if (ticks() >= second) {
+			second += tick_rate();
+			left--;
+			irtest_draw(s, lines, n, left);
+		}
+		count = ir_collect(&rc->last, len, MAX_EDGES);
+		if (!count)
+			continue;
+		code = ir_decode(len, count);
+		p = lines[n % IRTEST_LINES];
+		*p = 0;
+		puts("irtest: ");
+		putdec(n + 1);
+		puts(" edges ");
+		putdec(count);
+		if (ir_is_repeat(len, count)) {
+			puts(" repeat");
+			p = add(p, "repeat");
+		} else {
+			enum action act = rc_action(code);
+			const char *name = act == ACT_UP ? "up" : act == ACT_DOWN ? "down" : act == ACT_OK ? "ok" : "unknown";
+
+			puts(" code ");
+			puthex(code);
+			puts(" addr ");
+			puthex(code & 0xff);
+			puts(" cmd ");
+			puthex((code >> 16) & 0xff);
+			puts(" ");
+			puts(name);
+			p = add_hex(p, code & 0xff, 2);
+			p = add(p, "  ");
+			p = add_hex(p, (code >> 16) & 0xff, 2);
+			p = add(p, "  ");
+			p = add(p, name);
+			if (!code) {
+				p = add(p, " (");
+				p = add_dec(p, count);
+				add(p, " edges)");
+			}
+		}
+		puts(" us");
+		for (i = 0; i < count; i++) {
+			putc(' ');
+			putdec((int)len[i]);
+		}
+		putc('\n');
+		n++;
+		irtest_draw(s, lines, n, left);
+	}
+	puts("irtest: done, the built-in menu follows\n");
+}
+#endif
+
 /* Linked first, at the load address, so "go" lands here. */
 int menu_main(int argc, char * const argv[])
 	__attribute__((section(".text.entry")));
@@ -743,6 +872,12 @@ int menu_main(int argc, char * const argv[])
 	rc.held = ACT_NONE;
 	rc.seen = 0;
 	rc.next = 0;
+#ifdef IRTEST
+	if (logo_addr)
+		draw_logo(&screen, (const u8 *)logo_addr);
+	ir_test(&screen, &rc);
+	return 0;
+#endif
 	rc.polled = 0;
 	rc.release = 0;
 	/*

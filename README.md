@@ -129,6 +129,17 @@ loads `bootconfig.txt` to `0x03800000`, well above the program.
 `mkfont.py` from the Roboto fonts in `fonts/` (Apache License 2.0, see
 `fonts/LICENSE`); `make fonts` regenerates them and needs Pillow.
 
+## Remote test
+
+    make CROSS=aarch64-oe-linux- irtest
+
+builds `bootmenu-irtest.bin`. Put in place of `/data/bootmenu/bootmenu.bin`, it
+shows no menu but asks for 3x up, 3x down and 3x OK and logs every IR frame
+to the serial console (115200 baud): the NEC code with address and command,
+or for any other protocol the lengths of all edges in microseconds. After 60 s,
+or `q` on the console, the built-in menu follows and the box starts as usual.
+With such a log another remote can be added.
+
 ## Releases
 
 The version is `BOOTMENU_VERSION` in `src/menu.c`. When it changes on master, a
