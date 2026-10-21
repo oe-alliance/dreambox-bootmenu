@@ -14,7 +14,8 @@
 #define C_BLACK		RGB(0, 0, 0)
 #define C_WARN		RGB(235, 80, 70)
 
-#define MENU_TOP	300	/* everything above belongs to the logo */
+#define MENU_TOP	225	/* everything above belongs to the logo */
+#define RING_Y		585	/* countdown or OK */
 
 static int first_row(int count, int selected, int rows)
 {
@@ -98,7 +99,7 @@ static void draw_menu(struct screen *s, struct config *cfg, int selected,
 		      int remaining, int src)
 {
 	static const char version[] = "v" BOOTMENU_VERSION;
-	const int cx = 640, cy = 470;
+	const int cx = 640, cy = 395;
 	static const struct { int off, dy; } near[] = {
 		{ -2, -104 }, { -1, -52 }, { 1, 74 }, { 2, 126 },
 	};
@@ -142,29 +143,29 @@ static void draw_menu(struct screen *s, struct config *cfg, int selected,
 	if (cfg->timeout > 0) {
 		int permille = 1000 * remaining / (cfg->total ? cfg->total : 1);
 
-		ring(s, cx, 660, 18, 3, RGB(50, 56, 48), C_GLOW, permille);
+		ring(s, cx, RING_Y, 18, 3, RGB(50, 56, 48), C_GLOW, permille);
 		text_number(s, &font_tiny, cx - text_width(&font_tiny, remaining > 9 ? "00" : "0") / 2,
-			    660 - font_tiny.height / 2, remaining, RGB(220, 224, 214));
+			    RING_Y - font_tiny.height / 2, remaining, RGB(220, 224, 214));
 	} else {
 		/* No countdown, or it was stopped: a full ring around "OK", waiting for it. */
-		ring(s, cx, 660, 18, 3, RGB(50, 56, 48), C_GLOW, 1000);
-		text(s, &font_tiny, ink_left(&font_tiny, "OK", cx), 660 - font_tiny.height / 2,
+		ring(s, cx, RING_Y, 18, 3, RGB(50, 56, 48), C_GLOW, 1000);
+		text(s, &font_tiny, ink_left(&font_tiny, "OK", cx), RING_Y - font_tiny.height / 2,
 		     "OK", RGB(220, 224, 214), s->width);
 	}
 	/* Where the last key came from: IR left of the ring, Bluetooth right of it. */
 	if (src == SRC_IR)
-		text(s, &font_micro, cx - 30 - text_width(&font_micro, "IR"), 660 - font_micro.height / 2,
+		text(s, &font_micro, cx - 30 - text_width(&font_micro, "IR"), RING_Y - font_micro.height / 2,
 		     "IR", C_GLOW, s->width);
 	else if (src == SRC_BT)
-		text(s, &font_micro, cx + 30, 660 - font_micro.height / 2, "BT", C_GLOW, s->width);
+		text(s, &font_micro, cx + 30, RING_Y - font_micro.height / 2, "BT", C_GLOW, s->width);
 	if (cfg->source != CFG_FILE) {
 		const char *note = cfg->source == CFG_BACKUP ?
 			"bootconfig.txt is missing, these entries come from its backup" :
 			"bootconfig.txt and its backup is missing, these are available fallback entries";
 
-		text(s, &font_micro, cx - text_width(&font_micro, note) / 2, 614, note, C_WARN, s->width);
+		text(s, &font_micro, cx - text_width(&font_micro, note) / 2, RING_Y + 70, note, C_WARN, s->width);
 	}
-	text(s, &font_micro, ink_left(&font_micro, version, cx), 688, version,
+	text(s, &font_micro, ink_left(&font_micro, version, cx), RING_Y + 28, version,
 	     RGB(90, 96, 86), s->width);
 	flush(s, MENU_TOP, s->height - MENU_TOP);
 }

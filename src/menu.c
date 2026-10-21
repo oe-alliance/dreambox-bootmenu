@@ -958,15 +958,15 @@ static void irtest_draw(struct screen *s, char lines[][64], int n, int left)
 	int i, first = n > IRTEST_LINES ? n - IRTEST_LINES : 0;
 
 	fill(s, 0, MENU_TOP, s->width, s->height - MENU_TOP, C_BLACK);
-	text(s, &font_head, 640 - text_width(&font_head, "Remote test") / 2, 310, "Remote test", fg, s->width);
-	text(s, &font_far, 640 - text_width(&font_far, "Press: 3x up, 3x down, 3x OK") / 2, 350,
+	text(s, &font_head, 640 - text_width(&font_head, "Remote test") / 2, MENU_TOP + 10, "Remote test", fg, s->width);
+	text(s, &font_far, 640 - text_width(&font_far, "Press: 3x up, 3x down, 3x OK") / 2, MENU_TOP + 50,
 	     "Press: 3x up, 3x down, 3x OK", fg, s->width);
 	for (i = first; i < n; i++)
-		text(s, &font_far, 380, 400 + (i - first) * 36, lines[i % IRTEST_LINES], i == n - 1 ? fg : dim, s->width);
+		text(s, &font_far, 380, MENU_TOP + 100 + (i - first) * 36, lines[i % IRTEST_LINES], i == n - 1 ? fg : dim, s->width);
 	p = add(buf, "ends in ");
 	p = add_dec(p, left);
 	add(p, " s");
-	text(s, &font_far, 640 - text_width(&font_far, buf) / 2, 650, buf, dim, s->width);
+	text(s, &font_far, 640 - text_width(&font_far, buf) / 2, MENU_TOP + 350, buf, dim, s->width);
 	flush(s, MENU_TOP, s->height - MENU_TOP);
 }
 
