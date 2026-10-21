@@ -12,6 +12,7 @@
 #define C_LOGO		RGB(240, 243, 236)
 #define C_GLOW		RGB(190, 215, 160)
 #define C_BLACK		RGB(0, 0, 0)
+#define C_WARN		RGB(235, 80, 70)
 
 #define MENU_TOP	300	/* everything above belongs to the logo */
 
@@ -156,6 +157,13 @@ static void draw_menu(struct screen *s, struct config *cfg, int selected,
 		     "IR", C_GLOW, s->width);
 	else if (src == SRC_BT)
 		text(s, &font_micro, cx + 30, 660 - font_micro.height / 2, "BT", C_GLOW, s->width);
+	if (cfg->source != CFG_FILE) {
+		const char *note = cfg->source == CFG_BACKUP ?
+			"bootconfig.txt is missing, these entries come from its backup" :
+			"bootconfig.txt and its backup is missing, these are available fallback entries";
+
+		text(s, &font_micro, cx - text_width(&font_micro, note) / 2, 614, note, C_WARN, s->width);
+	}
 	text(s, &font_micro, ink_left(&font_micro, version, cx), 688, version,
 	     RGB(90, 96, 86), s->width);
 	flush(s, MENU_TOP, s->height - MENU_TOP);

@@ -42,7 +42,7 @@ typedef unsigned long u64;
 
 #define RC_TOGGLE	0x80u		/* set in the second frame of a press */
 
-#define BOOTMENU_VERSION	"1.3"	/* a change here tags a release */
+#define BOOTMENU_VERSION	"1.4"	/* a change here tags a release */
 
 #define RESULT_MAGIC	0x4d454e55u	/* "MENU" */
 
@@ -58,9 +58,16 @@ struct entry {
 	int arglen;
 };
 
+enum cfg_source {
+	CFG_FILE,		/* /data/bootconfig.txt */
+	CFG_BACKUP,		/* the copy install.sh keeps in /data/bootmenu */
+	CFG_BUILTIN,		/* neither had an entry, see fallback_config() */
+};
+
 struct config {
 	struct entry entry[MAX_ENTRIES];
 	int count;
+	enum cfg_source source;
 	int def;
 	int timeout;		/* seconds, 0 disables the countdown */
 	int total;		/* timeout as configured, for the progress */
@@ -1095,6 +1102,52 @@ static void ir_test(struct screen *s, struct remote *rc)
 }
 #endif
 
+/*
+ * Entries for when neither bootconfig.txt nor its copy has any: the slots of
+ * the GPT layout and the recovery, as the flash scripts write them.  The
+ * second slot is the default, it holds the image whose autoexec.img started
+ * this menu.  root= comes from the header of kernel.img.
+ */
+#define FALLBACK_MAX	1024
+
+static int fallback_config(char *buf, const char *mode)
+{
+	static const char *const slots[] = { "1", "2", "3", "4", "5" };
+	char *p = buf;
+	unsigned int i;
+
+	p = emit(p, "default=1\n");
+	for (i = 0; i <= sizeof(slots) / sizeof(slots[0]); i++) {
+		if (i < sizeof(slots) / sizeof(slots[0])) {
+			p = emit(p, "[Fallback Slot ");
+			p = emit(p, slots[i]);
+			p = emit(p, "]\ncmd=ext4load mmc 1:");
+			p = emit_dec(p, (int)i + 5);
+			p = emit(p, " 1080000 /boot/kernel.img;bootm;\n");
+		} else {
+			p = emit(p, "[Recovery]\ncmd=imgread kernel recovery ${loadaddr} 0; bootm ${loadaddr};\n");
+		}
+		p = emit(p, "arg=logo=osd0,loaded,0x7f800000 vout=");
+		p = emit(p, mode);
+		p = emit(p, ",enable hdmimode=");
+		p = emit(p, mode);
+		p = emit(p, " fb_width=1280 fb_height=720 panel_type=lcd_4\n");
+	}
+	return (int)(p - buf);
+}
+
+/* The video mode from u-boot, letters and digits only, e.g. 1080p50hz. */
+static const char *video_mode(int argc, char * const argv[])
+{
+	const char *s = argc > 9 ? argv[9] : "";
+	int i;
+
+	for (i = 0; s[i]; i++)
+		if (i >= 16 || !((s[i] >= '0' && s[i] <= '9') || (s[i] >= 'a' && s[i] <= 'z')))
+			return "1080p50hz";
+	return i ? s : "1080p50hz";
+}
+
 /* Linked first, at the load address, so "go" lands here. */
 int menu_main(int argc, char * const argv[])
 	__attribute__((section(".text.entry")));
@@ -1108,6 +1161,7 @@ int menu_main(int argc, char * const argv[])
 	int selected, remaining, redraw = 1, held = 0, shown = SRC_NONE;
 	u64 deadline, second;
 	struct remote rc;
+	char fallback[FALLBACK_MAX];
 
 	/* "go" passes its own address as argv[0], the arguments follow. */
 	if (argc < 4) {
@@ -1129,9 +1183,14 @@ int menu_main(int argc, char * const argv[])
 	logo_addr = argc > 7 ? parse_arg(argv[7]) : 0;
 
 	parse_config((const char *)cfg_addr, (int)cfg_len, &cfg);
+	cfg.source = argc > 8 && parse_arg(argv[8]) ? CFG_BACKUP : CFG_FILE;
+	if (cfg.source == CFG_BACKUP)
+		puts("menu: bootconfig.txt is empty, using the copy in /data/bootmenu\n");
 	if (!cfg.count) {
-		puts("menu: no entries in bootconfig.txt\n");
-		return 1;	/* no magic, so the caller falls back */
+		/* Never left to u-boot: its own default may boot a kernel with the wrong root. */
+		puts("menu: no entries in bootconfig.txt, fallback entries\n");
+		parse_config(fallback, fallback_config(fallback, video_mode(argc, argv)), &cfg);
+		cfg.source = CFG_BUILTIN;
 	}
 
 	cfg.total = cfg.timeout;
@@ -1187,8 +1246,9 @@ int menu_main(int argc, char * const argv[])
 	putdec(cfg.timeout);
 	puts(" s\n");
 
-	if (held) {
-		puts("menu: OK held, no countdown\n");
+	if (held || cfg.source != CFG_FILE) {
+		/* Without bootconfig.txt nothing starts on its own, the note has to be seen. */
+		puts(held ? "menu: OK held, no countdown\n" : "menu: no countdown without bootconfig.txt\n");
 		cfg.timeout = 0;
 	} else if (!cfg.timeout) {
 		/* Like dm_bootmenu, timeout 0 shows no logo and no menu, but starts the default entry. */

@@ -131,6 +131,10 @@ if [ "$MODE" = install ]; then
 	chmod 0755 "$TARGET/install.sh"
 	say "files installed in $TARGET."
 fi
+# A copy of a bootconfig.txt with entries, for when it is lost or emptied.
+if [ "$MODE" != remove ] && [ -d "$TARGET" ] && grep -qs "^cmd=" /data/bootconfig.txt; then
+	cp /data/bootconfig.txt "$TARGET/bootconfig.bak"
+fi
 if [ "$MODE" != remove ]; then
 	for file in bootmenu.bin bootmenu.scr; do
 		[ -f "$TARGET/$file" ] || fail "$TARGET/$file is missing."

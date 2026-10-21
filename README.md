@@ -37,6 +37,17 @@ the kernel gets the real MAC address) and boots the chosen entry.
 If `bootmenu.bin` is missing or returns nothing, the script does nothing and
 the built-in menu comes up as before.
 
+Without `/data/bootconfig.txt`, or with an empty one, the built-in menu has
+nothing to show and boots whatever u-boot has stored, on the GPT layout
+possibly a kernel with the wrong root. The boot menu takes over instead: the
+script loads the copy `install.sh` keeps as `/data/bootmenu/bootconfig.bak`,
+refreshed on every run from a `bootconfig.txt` with entries. Without that
+copy too, the menu offers the five eMMC slots ("Fallback Slot 1" to 5) and
+the recovery with fixed entries, the second slot as default, as it holds the
+image that started the menu. A red line below the list says which of the two
+it shows, and in both cases there is no countdown: nothing starts until OK
+is pressed.
+
 ## Installing
 
 From the feed on openATV:
@@ -78,18 +89,22 @@ without a download, by hand or from a start script:
 |---|---|
 | `bootmenu.bin`, `bootmenu.img`, `bootlogo.bmp`, `bootmenu.scr`, `install.sh`, `NOTICE`, `LICENSE`, `LICENSE.fonts` | `/data/bootmenu/` |
 | `bootmenu.scr` (the stub) | also `/etc/u-boot.scr.d/` of the image in slot 2 |
+| `bootconfig.bak`, a copy of `/data/bootconfig.txt` | `/data/bootmenu/`, written by `install.sh` |
 
 ## The program
 
 A u-boot standalone program, started as
 
-    go <load> <cfg> <cfglen> <result> [<fb> [<width> <height> [<logo>]]]
+    go <load> <cfg> <cfglen> <result> [<fb> [<width> <height> [<logo> [<copy> [<mode>]]]]]
 
 - `cfg`/`cfglen`: `bootconfig.txt`, already loaded by the script
 - `result`: where the choice is written
 - `fb`: the framebuffer, `0x${initrd_high}` as u-boot set it up for the logo
 - `logo`: `bootlogo.bmp` as loaded by the script (RGB565, screen size); it is
   drawn only when the menu shows
+- `copy`: 1 when `cfg` is `bootconfig.bak`, for the note below the list
+- `mode`: u-boot's `outputmode`, used in `arg=` of the fallback entries
+  (1080p50hz without it)
 
 The result is a magic (`0x4d454e55`), a zero word, the index and the length
 of a text block with `bm_sel`, `bm_title`, `bm_cmd` and `bm_arg` for
