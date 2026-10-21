@@ -13,6 +13,7 @@
 #define C_GLOW		RGB(190, 215, 160)
 #define C_BLACK		RGB(0, 0, 0)
 #define C_WARN		RGB(235, 80, 70)
+#define C_NOTE		RGB(235, 200, 80)
 
 #define MENU_TOP	225	/* everything above belongs to the logo */
 #define RING_Y		585	/* countdown or OK */
@@ -164,6 +165,11 @@ static void draw_menu(struct screen *s, struct config *cfg, int selected,
 			"bootconfig.txt and its backup is missing, these are available fallback entries";
 
 		text(s, &font_micro, cx - text_width(&font_micro, note) / 2, RING_Y + 70, note, C_WARN, s->width);
+	} else if (!cfg->total) {
+		/* timeout=0 shows no menu, only OK held at power-on brings it. */
+		const char *note = "Menu forced by OK";
+
+		text(s, &font_micro, cx - text_width(&font_micro, note) / 2, RING_Y + 70, note, C_NOTE, s->width);
 	}
 	text(s, &font_micro, ink_left(&font_micro, version, cx), RING_Y + 28, version,
 	     RGB(90, 96, 86), s->width);
