@@ -428,6 +428,20 @@ static int angle10(int dx, int dy)
 	return 3600 - a;
 }
 
+static void dot(struct screen *s, int cx, int cy, int r, u32 rgb)
+{
+	int x, y;
+
+	for (y = cy - r - 1; y <= cy + r + 1; y++)
+		for (x = cx - r - 1; x <= cx + r + 1; x++) {
+			int dx = x - cx, dy = y - cy;
+			u32 a = edge_alpha((int)isqrt((u32)(dx * dx + dy * dy) * 256), r * 16);
+
+			if (a)
+				blend(s, x, y, rgb, a);
+		}
+}
+
 static void ring(struct screen *s, int cx, int cy, int r, int width,
 		 u32 track, u32 done, int permille)
 {

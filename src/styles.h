@@ -119,14 +119,24 @@ static void draw_menu(struct screen *s, struct config *cfg, int selected,
 		if (i < 0 || i >= cfg->count)
 			continue;
 		t = cfg->entry[i].title;
-		text(s, f, cx - text_width(f, t) / 2, cy + near[k].dy - f->height / 2, t,
+		w = text_width(f, t);
+		text(s, f, cx - w / 2, cy + near[k].dy - f->height / 2, t,
 		     RGB(g, g, g - 6), s->width);
+		if (i == cfg->def) {
+			dot(s, cx - w / 2 - 16, cy + near[k].dy, 4, RGB(g, g + 20, g - 20));
+			dot(s, cx + w / 2 + 16, cy + near[k].dy, 4, RGB(g, g + 20, g - 20));
+		}
 	}
 	hline(s, 360, 920, cy - 32, RGB(60, 68, 58));
 	hline(s, 360, 920, cy + 50, RGB(60, 68, 58));
 	w = text_width(&font_sel, cfg->entry[selected].title);
 	glow_text(s, &font_sel, cx - w / 2, cy + 10 - font_sel.height / 2,
 		  cfg->entry[selected].title, C_WHITE, C_GLOW, 140, s->width);
+	/* The default entry keeps a dot, wherever it is in the list. */
+	if (selected == cfg->def) {
+		dot(s, cx - w / 2 - 22, cy + 10, 6, C_GLOW);
+		dot(s, cx + w / 2 + 22, cy + 10, 6, C_GLOW);
+	}
 
 	if (cfg->timeout > 0) {
 		int permille = 1000 * remaining / (cfg->total ? cfg->total : 1);

@@ -101,7 +101,8 @@ Latin-1, Latin Extended-A and the extra characters of Windows-1252 (euro
 sign, typographic quotes and dashes), anything else is drawn as `?`.
 
 It honours `default=` and `timeout=` from `bootconfig.txt`; the countdown
-runs down to 0 like the built-in menu. With `timeout=0` there is no logo and
+runs down to 0 like the built-in menu, and dots left and right of the default
+entry mark it while scrolling. With `timeout=0` there is no logo and
 no menu, the default entry starts right away (the built-in menu then rejects
 the file and starts whatever u-boot has stored). OK held on the remote while
 the box starts always brings the menu, without a countdown; a ring around
