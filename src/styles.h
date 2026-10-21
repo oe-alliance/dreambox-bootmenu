@@ -11,6 +11,7 @@
 #define C_WHITE		RGB(255, 255, 255)
 #define C_LOGO		RGB(240, 243, 236)
 #define C_GLOW		RGB(190, 215, 160)
+#define C_ACCENT	RGB(110, 230, 140)	/* ring and default dots */
 #define C_BLACK		RGB(0, 0, 0)
 #define C_WARN		RGB(235, 80, 70)
 #define C_NOTE		RGB(235, 200, 80)
@@ -126,8 +127,8 @@ static void draw_menu(struct screen *s, struct config *cfg, int selected,
 		text(s, f, cx - w / 2, cy + near[k].dy - f->height / 2, t,
 		     RGB(g, g, g - 6), s->width);
 		if (i == cfg->def) {
-			dot(s, cx - w / 2 - 16, cy + near[k].dy, 4, RGB(g, g + 20, g - 20));
-			dot(s, cx + w / 2 + 16, cy + near[k].dy, 4, RGB(g, g + 20, g - 20));
+			dot(s, cx - w / 2 - 16, cy + near[k].dy, 4, RGB(g * 110 / 230, g, g * 140 / 230));
+			dot(s, cx + w / 2 + 16, cy + near[k].dy, 4, RGB(g * 110 / 230, g, g * 140 / 230));
 		}
 	}
 	hline(s, 360, 920, cy - 32, RGB(60, 68, 58));
@@ -137,19 +138,19 @@ static void draw_menu(struct screen *s, struct config *cfg, int selected,
 		  cfg->entry[selected].title, C_WHITE, C_GLOW, 140, s->width);
 	/* The default entry keeps a dot, wherever it is in the list. */
 	if (selected == cfg->def) {
-		dot(s, cx - w / 2 - 22, cy + 10, 6, C_GLOW);
-		dot(s, cx + w / 2 + 22, cy + 10, 6, C_GLOW);
+		dot(s, cx - w / 2 - 22, cy + 10, 6, C_ACCENT);
+		dot(s, cx + w / 2 + 22, cy + 10, 6, C_ACCENT);
 	}
 
 	if (cfg->timeout > 0) {
 		int permille = 1000 * remaining / (cfg->total ? cfg->total : 1);
 
-		ring(s, cx, RING_Y, 18, 3, RGB(50, 56, 48), C_GLOW, permille);
+		ring(s, cx, RING_Y, 18, 3, RGB(50, 56, 48), C_ACCENT, permille);
 		text_number(s, &font_tiny, cx - text_width(&font_tiny, remaining > 9 ? "00" : "0") / 2,
 			    RING_Y - font_tiny.height / 2, remaining, RGB(220, 224, 214));
 	} else {
 		/* No countdown, or it was stopped: a full ring around "OK", waiting for it. */
-		ring(s, cx, RING_Y, 18, 3, RGB(50, 56, 48), C_GLOW, 1000);
+		ring(s, cx, RING_Y, 18, 3, RGB(50, 56, 48), C_ACCENT, 1000);
 		text(s, &font_tiny, ink_left(&font_tiny, "OK", cx), RING_Y - font_tiny.height / 2,
 		     "OK", RGB(220, 224, 214), s->width);
 	}
