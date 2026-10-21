@@ -34,19 +34,95 @@ then puts it into `bootcmd` and lets u-boot continue. `dm_bootmenu` finds no
 `loadaddr` and gives up without a menu, u-boot initialises the network (so
 the kernel gets the real MAC address) and boots the chosen entry.
 
-If `bootmenu.bin` is missing or returns nothing, the script does nothing and
-the built-in menu comes up as before.
+## Using the menu
 
-Without `/data/bootconfig.txt`, or with an empty one, the built-in menu has
-nothing to show and boots whatever u-boot has stored, on the GPT layout
-possibly a kernel with the wrong root. The boot menu takes over instead: the
-script loads the copy `install.sh` keeps as `/data/bootmenu/bootconfig.bak`,
-refreshed on every run from a `bootconfig.txt` with entries. Without that
-copy too, the menu offers the five eMMC slots ("Fallback Slot 1" to 5) and
-the recovery with fixed entries, the second slot as default, as it holds the
-image that started the menu. A red line below the list says which of the two
-it shows, and in both cases there is no countdown: nothing starts until OK
-is pressed.
+The menu comes up when the box starts, after the Dreambox logo. The entry in
+the middle, between the two lines, is the one that starts.
+
+| key on the remote | what it does |
+|---|---|
+| up / down | moves to the entry above or below; held, it keeps moving |
+| left | jumps to the first entry |
+| right | jumps to the last entry |
+| OK | starts the entry in the middle |
+| OK held while the box starts | brings the menu even with `timeout=0`, without a countdown |
+
+The ring at the bottom counts the seconds until the selected entry starts on
+its own. Up, down, left or right stop the countdown; the ring then shows "OK",
+and nothing starts until OK is pressed. The dots left and right of an entry
+mark the default one, the entry that starts on its own and is selected when
+the menu comes up. Which entry is the default, and how long the countdown
+runs, is set in the image's multiboot settings (`default=` and `timeout=` in
+`/data/bootconfig.txt`).
+
+"IR" left of the ring or "BT" right of it lights up for a second whenever a
+key arrives, by infrared or by Bluetooth. The line "Slot 3 / 16" above the
+list says which of how many entries is selected, the number below the ring
+is the version of the boot menu.
+
+Every Dreambox remote of the One and Two works, by infrared as well as by
+Bluetooth. A remote switched to its TV mode sends codes for the TV, which the
+menu does not take.
+
+On the serial console (115200 baud), `u`, `d`, `f`, `l` and Return or the
+arrow keys do the same as up, down, left, right and OK; `q` or Ctrl+C leaves
+the menu, and the built-in menu follows.
+
+## What the menu does
+
+**Normally** it shows the logo and the entries of `bootconfig.txt`, the
+`default=` entry selected and marked with a dot left and right of it, and a
+countdown of `timeout=` seconds in the ring at the bottom. The countdown runs
+down to 0 like the built-in menu, then the selected entry starts. Up, down,
+left or right stop it, and a ring around "OK" stands where the countdown was.
+
+**With `timeout=0`** there is no logo and no menu, the default entry starts
+right away. The built-in menu does the same, but rejects such a file and
+starts whatever u-boot has stored instead.
+
+**OK held on the remote while the box starts** always brings the menu,
+without a countdown, also with `timeout=0`. Then a yellow line "Menu forced
+by OK" below the ring says why the menu is there.
+
+**Without `/data/bootconfig.txt`, or with an empty one**, the built-in menu
+has nothing to show and boots whatever u-boot has stored, on the GPT layout
+possibly a kernel with the wrong root. The boot menu takes over instead:
+
+- the script loads the copy `install.sh` keeps as
+  `/data/bootmenu/bootconfig.bak`, refreshed on every run from a
+  `bootconfig.txt` with entries; a red line below the ring says "bootconfig.txt
+  is missing, these entries come from its backup"
+- without that copy too, the menu offers fixed entries for the five eMMC
+  slots ("Fallback Slot 1" to "Fallback Slot 5") and the recovery, the second
+  slot as default, as it holds the image that started the menu; the red line
+  says "bootconfig.txt and its backup is missing, these are available
+  fallback entries"
+
+In both cases there is no countdown, nothing starts until OK is pressed.
+
+**The built-in menu stays as a way out.** It comes up as before when
+
+- `bootmenu.bin` or `bootmenu.img` is missing, or `/data/bootmenu` altogether
+- the program returns no choice
+- `q` or Ctrl+C is pressed on the serial console (115200 baud); the console
+  is checked once before anything is drawn, so this works even if drawing
+  should fail
+
+**The picture** is always 1080p50 in RGB. 1080p50 is the mode the built-in
+menu uses and every TV takes; RGB is what every HDMI TV has to take, while
+some, such as older Panasonic plasmas, show nothing of the YCbCr u-boot sends
+otherwise. The image in the second slot may have set no mode or another one,
+e.g. 1080p60, and the colour space only changes together with the mode, so
+the script sets both. A TV then needs a few seconds before it shows the
+picture again, so the countdown may already have started when the menu
+appears. The image that starts sets its own mode and colour space.
+
+**The remotes:** infrared remotes send NEC codes, on addresses `0x32` to
+`0x35` with the same two key tables as the Linux driver. A Bluetooth remote
+sends its first press by infrared and the rest over Bluetooth to the front
+processor of the box, which passes its key reports on over a UART of its own;
+the menu reads both. The console logs every key with where it came from and
+its code.
 
 ## Installing
 
@@ -102,7 +178,7 @@ A u-boot standalone program, started as
 - `fb`: the framebuffer, `0x${initrd_high}` as u-boot set it up for the logo
 - `logo`: `bootlogo.bmp` as loaded by the script (RGB565, screen size); it is
   drawn only when the menu shows
-- `copy`: 1 when `cfg` is `bootconfig.bak`, for the note below the list
+- `copy`: 1 when `cfg` is `bootconfig.bak`, for the note below the ring
 - `mode`: u-boot's `outputmode`, used in `arg=` of the fallback entries
   (1080p50hz without it)
 
@@ -115,25 +191,8 @@ Titles are UTF-8 (a byte order mark is skipped); the fonts cover ASCII,
 Latin-1, Latin Extended-A and the extra characters of Windows-1252 (euro
 sign, typographic quotes and dashes), anything else is drawn as `?`.
 
-It honours `default=` and `timeout=` from `bootconfig.txt`; the countdown
-runs down to 0 like the built-in menu, and dots left and right of the default
-entry mark it while scrolling. With `timeout=0` there is no logo and
-no menu, the default entry starts right away (the built-in menu then rejects
-the file and starts whatever u-boot has stored). OK held on the remote while
-the box starts always brings the menu, without a countdown; a ring around
-"OK" then stands where the countdown would be, as it does once up or down
-stopped the countdown. The version shows below it.
-
-Keys: up and down move the bar and repeat when held, left jumps to the first
-entry, right to the last, and OK starts the chosen one. The Dreambox remotes
-work by infrared (NEC, addresses `0x32` to `0x35`) and by Bluetooth. A
-Bluetooth remote reaches u-boot through the front processor of the box,
-which passes its key reports on over a UART of its own. For a second after
-each key, "IR" left of the ring or "BT" right of it shows where it came
-from, and the console logs it with its code. On the serial
-console `u`, `d`, `f`, `l` and Return, or the arrow keys, do the same, and
-`q` or Ctrl+C leaves the menu without a choice, so the built-in menu takes
-over. The console is also checked once before anything is drawn.
+Of the global keys it uses `default=` and `timeout=`; `fb_pos`, `fb_size`
+and `font_size` belong to the layout of the built-in menu and are ignored.
 
 ## Building
 
