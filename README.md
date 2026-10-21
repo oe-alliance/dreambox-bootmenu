@@ -112,7 +112,9 @@ Keys: up and down move the bar and repeat when held, left jumps to the first
 entry, right to the last, and OK starts the chosen one. The Dreambox remotes
 work by infrared (NEC, addresses `0x32` to `0x35`) and by Bluetooth. A
 Bluetooth remote reaches u-boot through the front processor of the box,
-which passes its key reports on over a UART of its own. On the serial
+which passes its key reports on over a UART of its own. For a second after
+each key, "IR" left of the ring or "BT" right of it shows where it came
+from, and the console logs it with its code. On the serial
 console `u`, `d`, `f`, `l` and Return, or the arrow keys, do the same, and
 `q` or Ctrl+C leaves the menu without a choice, so the built-in menu takes
 over. The console is also checked once before anything is drawn.

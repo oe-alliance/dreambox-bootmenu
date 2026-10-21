@@ -94,7 +94,7 @@ static int ink_left(const struct font *f, const char *t, int cx)
 
 /* C: a wheel, the chosen entry large between two lines. */
 static void draw_menu(struct screen *s, struct config *cfg, int selected,
-		      int remaining)
+		      int remaining, int src)
 {
 	static const char version[] = "v" BOOTMENU_VERSION;
 	const int cx = 640, cy = 470;
@@ -140,6 +140,12 @@ static void draw_menu(struct screen *s, struct config *cfg, int selected,
 		text(s, &font_tiny, ink_left(&font_tiny, "OK", cx), 660 - font_tiny.height / 2,
 		     "OK", RGB(220, 224, 214), s->width);
 	}
+	/* Where the last key came from: IR left of the ring, Bluetooth right of it. */
+	if (src == SRC_IR)
+		text(s, &font_micro, cx - 30 - text_width(&font_micro, "IR"), 660 - font_micro.height / 2,
+		     "IR", C_GLOW, s->width);
+	else if (src == SRC_BT)
+		text(s, &font_micro, cx + 30, 660 - font_micro.height / 2, "BT", C_GLOW, s->width);
 	text(s, &font_micro, ink_left(&font_micro, version, cx), 688, version,
 	     RGB(90, 96, 86), s->width);
 	flush(s, MENU_TOP, s->height - MENU_TOP);

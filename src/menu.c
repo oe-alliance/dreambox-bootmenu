@@ -364,6 +364,8 @@ static void parse_config(const char *buf, int len, struct config *cfg)
 #include "fonts.h"
 #include "fonts_bold.h"
 #include "fonts_small.h"
+enum source { SRC_NONE, SRC_IR, SRC_BT };
+
 #include "styles.h"
 
 /*
@@ -572,7 +574,18 @@ struct remote {
 	struct fp_rx fp;	/* Bluetooth remote, through the front processor */
 	int bt;			/* held comes from the Bluetooth remote */
 	u64 bt_seen;		/* its last key frame */
+	enum source src;	/* where the last key came from */
+	u64 src_seen;		/* and when */
+	u32 code;		/* its NEC code or Bluetooth key bits, for the log */
 };
+
+#define SRC_SHOW_MS	1000	/* the source shows this long after the last key */
+
+static void heard(struct remote *rc, enum source src, u64 now)
+{
+	rc->src = src;
+	rc->src_seen = now;
+}
 
 static u64 ms(u32 value)
 {
@@ -616,6 +629,8 @@ static enum action bt_key(struct remote *rc, u64 now)
 			return ACT_NONE;
 		}
 		rc->bt_seen = now;
+		heard(rc, SRC_BT, now);
+		rc->code = (u32)keys;
 		if (!rc->bt || rc->held != act) {
 			rc->held = act;
 			rc->bt = 1;
@@ -712,6 +727,7 @@ static enum action read_key(struct remote *rc)
 
 	c = serial_getc();
 	if (c >= 0) {
+		rc->src = SRC_NONE;
 		if (c == 'u' || c == 'A')
 			return ACT_UP;
 		if (c == 'd' || c == 'B')
@@ -735,6 +751,8 @@ static enum action read_key(struct remote *rc)
 	now = ticks();
 	if (rc->release) {
 		/* Quiet counts only while listening, not while drawing. */
+		if (count && (ir_is_repeat(len, count) || rc_action(ir_decode(len, count)) != ACT_NONE))
+			heard(rc, SRC_IR, now);
 		if (count || now - rc->polled > ms(50))
 			rc->seen = now;
 		else if (now - rc->seen > ms(PRESS_GAP_MS))
@@ -749,6 +767,7 @@ static enum action read_key(struct remote *rc)
 		if (rc->held == ACT_NONE || now - rc->seen > ms(PRESS_GAP_MS))
 			return ACT_NONE;
 		rc->seen = now;
+		heard(rc, SRC_IR, now);
 	} else {
 		code = ir_decode(len, count);
 		act = rc_action(code);
@@ -756,6 +775,8 @@ static enum action read_key(struct remote *rc)
 			ir_report(len, count, code);
 			return ACT_NONE;
 		}
+		heard(rc, SRC_IR, now);
+		rc->code = code;
 		command = (code >> 16) & 0xff;
 		if (!(command & RC_TOGGLE) || rc->held != act ||
 		    now - rc->seen > ms(PRESS_GAP_MS)) {
@@ -791,6 +812,7 @@ static int ok_held(struct remote *rc)
 		rc->bt = 1;
 		rc->bt_seen = rc->seen = rc->polled = ticks();
 		rc->release = 1;
+		heard(rc, SRC_BT, rc->seen);
 		return 1;
 	}
 	count = ir_collect(&rc->last, len, MAX_EDGES);
@@ -799,6 +821,7 @@ static int ok_held(struct remote *rc)
 	rc->held = ACT_OK;
 	rc->seen = rc->polled = ticks();
 	rc->release = 1;
+	heard(rc, SRC_IR, rc->seen);
 	return 1;
 }
 
@@ -1082,7 +1105,7 @@ int menu_main(int argc, char * const argv[])
 	struct screen screen;
 	unsigned long cfg_addr, result_addr, logo_addr;
 	u32 cfg_len;
-	int selected, remaining, redraw = 1, held = 0;
+	int selected, remaining, redraw = 1, held = 0, shown = SRC_NONE;
 	u64 deadline, second;
 	struct remote rc;
 
@@ -1119,6 +1142,9 @@ int menu_main(int argc, char * const argv[])
 	rc.next = 0;
 	rc.bt = 0;
 	rc.bt_seen = 0;
+	rc.src = SRC_NONE;
+	rc.src_seen = 0;
+	rc.code = 0;
 	fp_init(&rc.fp);
 #ifdef IRTEST
 	if (logo_addr)
@@ -1180,13 +1206,29 @@ int menu_main(int argc, char * const argv[])
 
 	for (;;) {
 		enum action act;
+		int src = rc.src != SRC_NONE && ticks() - rc.src_seen < ms(SRC_SHOW_MS) ? rc.src : SRC_NONE;
 
+		if (src != shown) {
+			shown = src;
+			redraw = 1;
+		}
 		if (redraw) {
-			draw_menu(&screen, &cfg, selected, remaining);
+			draw_menu(&screen, &cfg, selected, remaining, shown);
 			redraw = 0;
 		}
 
 		act = read_key(&rc);
+		if (act != ACT_NONE && act != ACT_ABORT) {
+			puts("menu: ");
+			puts(action_name(act));
+			if (rc.src == SRC_NONE) {
+				puts(" (console)\n");
+			} else {
+				puts(rc.src == SRC_BT ? " (bt " : " (ir ");
+				puthex(rc.code);
+				puts(")\n");
+			}
+		}
 		if (act == ACT_OK)
 			break;
 		if (act == ACT_ABORT) {
