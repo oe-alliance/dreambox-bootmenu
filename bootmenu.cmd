@@ -4,11 +4,13 @@
 # Built into bootmenu.img, which lies in /data/bootmenu next to bootmenu.bin
 # and is run by the stub bootmenu.scr in the second slot. Script and program
 # are always updated together this way.
-# Without a video mode, e.g. a freshly flashed image that has not run yet,
-# the bootlogo snippet sets up neither the OSD nor the output; do it with
-# 1080p50 then, in the same order as the snippet. An empty value
-# drops out as an argument, so it is compared with a prefix.
-if test "x${outputmode}" = "x"; then setenv outputmode 1080p50hz; setenv hdmimode 1080p50hz; osd open; osd clear; bmp scale; vout output ${outputmode}; fi
+# The menu is drawn in 1080p50 like the built-in one, the mode every TV takes,
+# and in RGB, which every HDMI TV has to take; some show nothing of the YCbCr
+# u-boot sends otherwise. The image in the second slot may have set no mode or
+# another one, e.g. 1080p60, and the colour space only changes with the mode.
+# An empty value drops out as an argument, so it is compared with a prefix.
+setenv bm_vout "setenv outputmode 1080p50hz; setenv hdmimode 1080p50hz; setenv colorattribute rgb,8bit; osd open; osd clear; bmp scale; vout output 1080p50hz"
+test "x${outputmode} ${colorattribute}" = "x1080p50hz rgb,8bit" || run bm_vout
 setenv bm_logo 0x04000000
 mw.l ${bm_logo} 0 1
 ext4load mmc 1:4 ${bm_logo} /bootmenu/bootlogo.bmp
