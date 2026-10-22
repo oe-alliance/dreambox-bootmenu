@@ -467,6 +467,11 @@ static u32 ir_decode(const u32 *len, int count)
  * 0x7f, tag, len, data[len], sum, sum of sums over tag, len and data.
  * Tag 0x18 carries the keys of a Bluetooth remote as a bitmap of 6 bytes,
  * all zero once released.  Linux leaves the UART as u-boot set it up.
+ * Commands go the same way, padded with 0x5a to a multiple of 16 bytes.
+ * 0x62 asks for the connected remotes, the answer is 0x01 and per remote
+ * its address and flags; 0xd6 with an address asks for its battery, the
+ * answer 0x6c is the address and the level in percent.  0x6b, the address
+ * and the signal strength in dBm, comes by itself now and then.
  */
 #define FP_BASE		0xff804000UL
 #define FP_CONTROL	0x08
@@ -475,7 +480,12 @@ static u32 ir_decode(const u32 *len, int count)
 #define FP_PIN_MUX_UART	0x00002200u
 #define FP_START	0x7f
 #define FP_TAG_KEYS	0x18
+#define FP_CONNECTED	0x62
+#define FP_ASK_BATTERY	0xd6
+#define FP_BATTERY	0x6c
+#define FP_RSSI		0x6b
 #define FP_MAX		64
+#define FP_ASK_MS	2000	/* asks for the battery again on a key, at most this often */
 
 /* Bits of fp_keys(): the third key byte, the first one << 8, the fifth << 16. */
 #define BT_UP		0x000020
@@ -489,6 +499,9 @@ static u32 ir_decode(const u32 *len, int count)
 struct fp_rx {
 	u8 buf[FP_MAX];
 	int pos;
+	int battery;		/* percent of the Bluetooth remote, -1 until it says */
+	int rssi;		/* its signal in dBm, 0 until it says */
+	u64 asked;
 };
 
 /* Returns the length of a complete frame in buf, 0 while none is complete. */
@@ -524,6 +537,37 @@ static int fp_checked(const u8 *f, int n)
 	return f[n - 2] == sum && f[n - 1] == sums;
 }
 
+static void fp_send(u8 tag, const u8 *data, int len)
+{
+	u8 f[32], sum = 0, sums = 0;
+	int i, n = 0;
+
+	f[n++] = FP_START;
+	f[n++] = tag;
+	f[n++] = (u8)len;
+	for (i = 0; i < len; i++)
+		f[n++] = data[i];
+	for (i = 1; i < n; i++) {
+		sum += f[i];
+		sums += sum;
+	}
+	f[n++] = sum;
+	f[n++] = sums;
+	while (n & 15)
+		f[n++] = 0x5a;
+	for (i = 0; i < n; i++) {
+		while (readl(FP_BASE + UART_STATUS) & UART_TX_FULL)
+			;
+		writel(FP_BASE + UART_WFIFO, f[i]);
+	}
+}
+
+static void fp_ask(struct fp_rx *fp)
+{
+	fp_send(FP_CONNECTED, 0, 0);
+	fp->asked = ticks();
+}
+
 /* Frames from before the menu are dropped, a key in them is long gone. */
 static void fp_init(struct fp_rx *fp)
 {
@@ -534,6 +578,31 @@ static void fp_init(struct fp_rx *fp)
 	while (!(readl(FP_BASE + UART_STATUS) & UART_RX_EMPTY))
 		readl(FP_BASE + UART_RFIFO);
 	fp->pos = 0;
+	fp->battery = -1;
+	fp->rssi = 0;
+	fp_ask(fp);
+}
+
+/* The answers to fp_ask(): each connected remote is asked for its battery. */
+static void fp_answer(struct fp_rx *fp, const u8 *f)
+{
+	int i;
+
+	if (f[1] == FP_CONNECTED && f[2] >= 1 && f[3] == 0x01 && (f[2] - 1) % 7 == 0) {
+		for (i = 4; i + 7 <= 3 + f[2]; i += 7)
+			fp_send(FP_ASK_BATTERY, f + i, 6);
+	} else if (f[1] == FP_BATTERY && f[2] >= 7 && (f[9] & 0x7f)) {
+		/* 0 is no report yet. */
+		fp->battery = f[9] & 0x7f;
+		puts("menu: bluetooth remote battery ");
+		putdec(fp->battery);
+		puts(" %\n");
+	} else if (f[1] == FP_RSSI && f[2] >= 7 && f[9]) {
+		fp->rssi = (signed char)f[9];
+		puts("menu: bluetooth remote signal ");
+		putdec(fp->rssi);
+		puts(" dBm\n");
+	}
 }
 
 /* Returns 1 for a key frame and puts its keys in *keys. */
@@ -542,8 +611,12 @@ static int fp_keys(struct fp_rx *fp, int *keys)
 	int n = fp_poll(fp);
 	const u8 *f = fp->buf;
 
-	if (!n || f[1] != FP_TAG_KEYS || f[2] != 6 || !fp_checked(f, n))
+	if (!n || !fp_checked(f, n))
 		return 0;
+	if (f[1] != FP_TAG_KEYS || f[2] != 6) {
+		fp_answer(fp, f);
+		return 0;
+	}
 	*keys = f[5] | f[3] << 8 | f[7] << 16 | (f[4] | f[6] | f[8] ? BT_OTHER : 0);
 	return 1;
 }
@@ -590,6 +663,7 @@ struct remote {
 };
 
 #define SRC_SHOW_MS	250	/* the source shows while frames come: IR every 108 ms, Bluetooth while held */
+#define BT_SHOW_MS	5000	/* battery and signal show this long after a Bluetooth key */
 
 static void heard(struct remote *rc, enum source src, u64 now)
 {
@@ -645,6 +719,9 @@ static enum action bt_key(struct remote *rc, u64 now)
 		rc->bt_seen = now;
 		heard(rc, SRC_BT, now);
 		rc->code = (u32)keys;
+		/* By now the remote is connected, at power-on it may not have been. */
+		if (rc->fp.battery < 0 && now - rc->fp.asked > ms(FP_ASK_MS))
+			fp_ask(&rc->fp);
 		if (!rc->bt || rc->held != act) {
 			rc->held = act;
 			rc->bt = 1;
@@ -1060,9 +1137,17 @@ static void ir_test(struct screen *s, struct remote *rc)
 		}
 		count = fp_poll(&rc->fp);
 		if (count) {
+			const u8 *f = rc->fp.buf;
+
 			p = lines[n % IRTEST_LINES];
 			*p = 0;
-			fp_report(rc->fp.buf, count, p);
+			fp_report(f, count, p);
+			if (fp_checked(f, count)) {
+				fp_answer(&rc->fp, f);
+				if (f[1] == FP_TAG_KEYS && rc->fp.battery < 0 &&
+				    ticks() - rc->fp.asked > ms(FP_ASK_MS))
+					fp_ask(&rc->fp);
+			}
 			n++;
 			irtest_draw(s, lines, n, left);
 			continue;
@@ -1282,7 +1367,7 @@ int menu_main(int argc, char * const argv[])
 	struct screen screen;
 	unsigned long cfg_addr, result_addr, logo_addr;
 	u32 cfg_len;
-	int selected, remaining, redraw = 1, held = 0, shown = SRC_NONE, info = 0;
+	int selected, remaining, redraw = 1, held = 0, shown = SRC_NONE, info = 0, battery = -1, rssi = 0;
 	u64 deadline, second;
 	struct remote rc;
 	char fallback[FALLBACK_MAX];
@@ -1403,16 +1488,19 @@ int menu_main(int argc, char * const argv[])
 	for (;;) {
 		enum action act;
 		int src = rc.src != SRC_NONE && ticks() - rc.src_seen < ms(SRC_SHOW_MS) ? rc.src : SRC_NONE;
+		int bt = rc.bt_seen && ticks() - rc.bt_seen < ms(BT_SHOW_MS);
 
-		if (src != shown) {
+		if (src != shown || (bt ? rc.fp.battery : -1) != battery || (bt ? rc.fp.rssi : 0) != rssi) {
 			shown = src;
+			battery = bt ? rc.fp.battery : -1;
+			rssi = bt ? rc.fp.rssi : 0;
 			redraw = 1;
 		}
 		if (redraw) {
 			if (info)
 				draw_info(&screen);
 			else
-				draw_menu(&screen, &cfg, selected, remaining, shown);
+				draw_menu(&screen, &cfg, selected, remaining, shown, battery, rssi);
 			redraw = 0;
 		}
 

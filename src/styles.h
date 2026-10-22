@@ -133,9 +133,47 @@ static void draw_info(struct screen *s)
 	flush(s, MENU_TOP, s->height - MENU_TOP);
 }
 
+/* Battery of the Bluetooth remote, its level in the middle: red up to 10 %, yellow up to 20 %. */
+static void draw_battery(struct screen *s, int x, int cy, int level)
+{
+	const int w = 50, h = 24, t = 2;
+	const u32 c = level <= 10 ? C_WARN : level <= 20 ? C_NOTE : RGB(220, 224, 214);
+	const u32 dim = RGB((c >> 16 & 0xff) * 2 / 7, (c >> 8 & 0xff) * 2 / 7, (c & 0xff) * 2 / 7);
+	const int y = cy - h / 2, inner = w - 4 * t;
+	char buf[8], *p = buf + 7;
+	int n = level;
+
+	fill(s, x, y, w, t, c);
+	fill(s, x, y + h - t, w, t, c);
+	fill(s, x, y, t, h, c);
+	fill(s, x + w - t, y, t, h, c);
+	fill(s, x + w, cy - 5, 3, 10, c);
+	fill(s, x + 2 * t, y + 2 * t, (inner * level + 50) / 100, h - 4 * t, dim);
+	*p = 0;
+	*--p = '%';
+	do {
+		*--p = (char)('0' + n % 10);
+		n /= 10;
+	} while (n);
+	text(s, &font_micro, ink_left(&font_micro, p, x + w / 2), cy - 9, p, c, s->width);
+}
+
+/* Signal of the Bluetooth remote as four bars, one each from -90, -80, -70 and -60 dBm. */
+static void draw_signal(struct screen *s, int x, int cy, int rssi)
+{
+	const int bars = rssi >= -60 ? 4 : rssi >= -70 ? 3 : rssi >= -80 ? 2 : 1;
+	int i;
+
+	for (i = 0; i < 4; i++) {
+		int h = 6 + 4 * i;
+
+		fill(s, x + 6 * i, cy + 9 - h, 4, h, i < bars ? RGB(220, 224, 214) : RGB(60, 66, 58));
+	}
+}
+
 /* C: a wheel, the chosen entry large between two lines. */
 static void draw_menu(struct screen *s, struct config *cfg, int selected,
-		      int remaining, int src)
+		      int remaining, int src, int battery, int rssi)
 {
 	const int cx = 640, cy = 395;
 	static const struct { int off, dy; } near[] = {
@@ -196,6 +234,10 @@ static void draw_menu(struct screen *s, struct config *cfg, int selected,
 		     "IR", C_GLOW, s->width);
 	else if (src == SRC_BT)
 		text(s, &font_micro, cx + 30, RING_Y - font_micro.height / 2, "BT", C_GLOW, s->width);
+	if (battery > 0)
+		draw_battery(s, cx + 58, RING_Y, battery);
+	if (rssi)
+		draw_signal(s, cx + 122, RING_Y, rssi);
 	if (cfg->source != CFG_FILE) {
 		const char *note = cfg->source == CFG_BACKUP ?
 			"bootconfig.txt is missing, these entries come from its backup" :

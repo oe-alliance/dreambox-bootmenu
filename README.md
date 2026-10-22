@@ -62,7 +62,12 @@ settings; see below.
 down, by infrared or by Bluetooth. The line "Slot 3 / 16" above the list
 says which of how many entries is selected. Below the ring, "v1.6 · INFO ·
 License" gives the version of the boot menu and the key for the license
-page; HELP opens it too, on remotes that have that key.
+page; HELP opens it too, on remotes that have that key. Right of "BT", a
+battery shows for 5 seconds after each key of a Bluetooth remote how full
+its battery is, in percent; yellow from 20 % down, red from 10 % down. Four
+bars right of it give the signal of the remote, one bar each from -90, -80,
+-70 and -60 dBm. Both appear once the remote has reported them: the menu
+asks for the battery, the signal the remote sends now and then by itself.
 
 Every Dreambox remote of the One and Two works, by infrared as well as by
 Bluetooth. A remote switched to its TV mode sends codes for the TV, which the
@@ -139,7 +144,8 @@ appears. The image that starts sets its own mode and colour space.
 sends its first press by infrared and the rest over Bluetooth to the front
 processor of the box, which passes its key reports on over a UART of its own;
 the menu reads both. The console logs every key with where it came from and
-its code.
+its code. For the battery the menu asks the front processor which remotes
+are connected and then each of them for its level.
 
 ## Installing
 
