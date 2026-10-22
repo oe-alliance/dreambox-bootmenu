@@ -589,7 +589,7 @@ struct remote {
 	u32 code;		/* its NEC code or Bluetooth key bits, for the log */
 };
 
-#define SRC_SHOW_MS	1000	/* the source shows this long after the last key */
+#define SRC_SHOW_MS	250	/* the source shows while frames come: IR every 108 ms, Bluetooth while held */
 
 static void heard(struct remote *rc, enum source src, u64 now)
 {
@@ -634,8 +634,10 @@ static enum action bt_key(struct remote *rc, u64 now)
 	if (fp_keys(&rc->fp, &keys)) {
 		act = bt_action(keys);
 		if (act == ACT_NONE) {
-			if (rc->bt)
+			if (rc->bt) {
 				rc->held = ACT_NONE;
+				rc->src_seen = 0;	/* released: the BT mark goes at once */
+			}
 			rc->bt = 0;
 			rc->release = 0;
 			return ACT_NONE;

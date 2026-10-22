@@ -58,10 +58,10 @@ runs, is set in the image's multiboot settings (`default=` and `timeout=` in
 and makes it the default next time, also for images that have no multiboot
 settings; see below.
 
-"IR" left of the ring or "BT" right of it lights up for a second whenever a
-key arrives, by infrared or by Bluetooth. The line "Slot 3 / 16" above the
-list says which of how many entries is selected, the number below the ring
-is the version of the boot menu.
+"IR" left of the ring or "BT" right of it lights up while a key is held
+down, by infrared or by Bluetooth. The line "Slot 3 / 16" above the list
+says which of how many entries is selected, the number below the ring is the
+version of the boot menu.
 
 Every Dreambox remote of the One and Two works, by infrared as well as by
 Bluetooth. A remote switched to its TV mode sends codes for the TV, which the
