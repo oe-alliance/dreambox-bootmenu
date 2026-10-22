@@ -57,6 +57,20 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git tag "v$VERSION"
           git push origin "refs/tags/v$VERSION"
+      - name: Release notes
+        if: steps.check_tag.outputs.skip != 'true'
+        env:
+          VERSION: ${{ steps.get_version.outputs.version }}
+        run: |
+          # The download counter of this release, then the commits since the one before.
+          prev=$(git tag --list 'v*' --sort=-v:refname | grep -vx "v$VERSION" | head -n 1)
+          {
+            printf '![Downloads](https://img.shields.io/github/downloads/%s/v%s/total?color=blue&style=flat-square)\n\n' "$GITHUB_REPOSITORY" "$VERSION"
+            if [ -n "$prev" ]; then
+              printf '## Commits since %s\n' "$prev"
+              git log --no-merges --format='- %s (%h)' "$prev..v$VERSION"
+            fi
+          } > release_body.md
       # install.sh is fetched on its own for "curl ... | sh", it then takes the archive.
       - name: Create GitHub Release
         if: steps.check_tag.outputs.skip != 'true'
@@ -64,6 +78,7 @@ jobs:
         with:
           tag_name: v${{ steps.get_version.outputs.version }}
           name: Release v${{ steps.get_version.outputs.version }}
+          body_path: release_body.md
           generate_release_notes: true
           files: |
             install.sh
