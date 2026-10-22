@@ -1,5 +1,12 @@
 # Boot menu for the Dreambox One and Two
 
+[![License: GPLv3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0.html#license-text)
+[![Build Status](https://github.com/oe-alliance/dreambox-bootmenu/actions/workflows/build.yml/badge.svg)](https://github.com/oe-alliance/dreambox-bootmenu/actions/workflows/build.yml)
+[![Release Status](https://github.com/oe-alliance/dreambox-bootmenu/actions/workflows/autotag.yml/badge.svg)](https://github.com/oe-alliance/dreambox-bootmenu/actions/workflows/autotag.yml)
+[![Latest Version](https://img.shields.io/github/v/tag/oe-alliance/dreambox-bootmenu?label=Latest%20Version&color=darkviolet)](https://github.com/oe-alliance/dreambox-bootmenu/tags)
+[![Latest Release](https://img.shields.io/github/release-date/oe-alliance/dreambox-bootmenu?label=From&color=darkviolet)](https://github.com/oe-alliance/dreambox-bootmenu/releases/latest)
+[![GitHub all releases](https://img.shields.io/github/downloads/oe-alliance/dreambox-bootmenu/total?label=Downloads&color=blue)](https://github.com/oe-alliance/dreambox-bootmenu/releases)
+
 ![The boot menu on a Dreambox One](docs/screenshot.png)
 
 Replaces the boot menu built into the Dreambox u-boot (`dm_bootmenu`) on boxes
