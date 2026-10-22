@@ -60,8 +60,9 @@ settings; see below.
 
 "IR" left of the ring or "BT" right of it lights up while a key is held
 down, by infrared or by Bluetooth. The line "Slot 3 / 16" above the list
-says which of how many entries is selected, the number below the ring is the
-version of the boot menu.
+says which of how many entries is selected. Below the ring, "v1.6 · INFO ·
+License" gives the version of the boot menu and the key for the license
+page; HELP opens it too, on remotes that have that key.
 
 Every Dreambox remote of the One and Two works, by infrared as well as by
 Bluetooth. A remote switched to its TV mode sends codes for the TV, which the

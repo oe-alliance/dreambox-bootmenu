@@ -10,7 +10,7 @@
 
 Covers ASCII and, unless --ascii is given first, Latin-1, Latin Extended-A
 and the extra characters of Windows-1252 (euro sign, typographic quotes and
-dashes).  The glyphs are sorted by code point, the font carries the list of
+dashes); with --ascii it adds only the middle dot.  The glyphs are sorted by code point, the font carries the list of
 code points for a binary search.  Each glyph is stored row by row, two pixels per byte,
 high nibble first, rows padded to a full byte.
 """
@@ -53,7 +53,7 @@ def render(path, size, codes):
 
 def main():
 	args = argv[1:]
-	codes = ASCII if args[0] == "--ascii" else sorted(set(ASCII + LATIN1 + LATIN_EXT_A + CP1252))
+	codes = ASCII + [0xb7] if args[0] == "--ascii" else sorted(set(ASCII + LATIN1 + LATIN_EXT_A + CP1252))
 	if args[0] == "--ascii":
 		args = args[1:]
 	path, out = args[0], args[1]

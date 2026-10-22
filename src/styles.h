@@ -18,6 +18,8 @@
 
 #define MENU_TOP	225	/* everything above belongs to the logo */
 #define RING_Y		585	/* countdown or OK */
+#define ABOUT_Y		(RING_Y + 34)	/* version line below the ring */
+#define NOTE_Y		(RING_Y + 76)	/* yellow or red note below that */
 
 static int first_row(int count, int selected, int rows)
 {
@@ -96,6 +98,14 @@ static int ink_left(const struct font *f, const char *t, int cx)
 	return lo > hi ? cx : cx - (lo + hi) / 2;
 }
 
+/* The version and how to reach the license page, below the ring. */
+static void draw_about(struct screen *s, int cx, u32 color)
+{
+	static const char about[] = "v" BOOTMENU_VERSION " \xc2\xb7 INFO \xc2\xb7 License";
+
+	text(s, &font_micro, ink_left(&font_micro, about, cx), ABOUT_Y, about, color, s->width);
+}
+
 /* INFO or HELP: what the menu is made of and under which licenses. */
 static void draw_info(struct screen *s)
 {
@@ -118,7 +128,7 @@ static void draw_info(struct screen *s)
 	for (i = 0; i < sizeof(lines) / sizeof(lines[0]); i++)
 		text(s, &font_far, cx - text_width(&font_far, lines[i]) / 2, MENU_TOP + 80 + (int)i * 40,
 		     lines[i], i < 1 ? C_LOGO : RGB(160, 166, 154), s->width);
-	text(s, &font_micro, cx - text_width(&font_micro, hint) / 2, RING_Y + 28, hint,
+	text(s, &font_micro, cx - text_width(&font_micro, hint) / 2, ABOUT_Y, hint,
 	     RGB(90, 96, 86), s->width);
 	flush(s, MENU_TOP, s->height - MENU_TOP);
 }
@@ -127,7 +137,6 @@ static void draw_info(struct screen *s)
 static void draw_menu(struct screen *s, struct config *cfg, int selected,
 		      int remaining, int src)
 {
-	static const char version[] = "v" BOOTMENU_VERSION;
 	const int cx = 640, cy = 395;
 	static const struct { int off, dy; } near[] = {
 		{ -2, -104 }, { -1, -52 }, { 1, 74 }, { 2, 126 },
@@ -192,14 +201,13 @@ static void draw_menu(struct screen *s, struct config *cfg, int selected,
 			"bootconfig.txt is missing, these entries come from its backup" :
 			"bootconfig.txt and its backup is missing, these are available fallback entries";
 
-		text(s, &font_micro, cx - text_width(&font_micro, note) / 2, RING_Y + 70, note, C_WARN, s->width);
+		text(s, &font_micro, cx - text_width(&font_micro, note) / 2, NOTE_Y, note, C_WARN, s->width);
 	} else if (!cfg->total) {
 		/* timeout=0 shows no menu, only OK held at power-on brings it. */
 		const char *note = "Menu forced by OK";
 
-		text(s, &font_micro, cx - text_width(&font_micro, note) / 2, RING_Y + 70, note, C_NOTE, s->width);
+		text(s, &font_micro, cx - text_width(&font_micro, note) / 2, NOTE_Y, note, C_NOTE, s->width);
 	}
-	text(s, &font_micro, ink_left(&font_micro, version, cx), RING_Y + 28, version,
-	     RGB(90, 96, 86), s->width);
+	draw_about(s, cx, RGB(90, 96, 86));
 	flush(s, MENU_TOP, s->height - MENU_TOP);
 }
