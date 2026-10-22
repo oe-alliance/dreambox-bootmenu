@@ -24,6 +24,18 @@ setenv bm_len 0
 setenv bm_src 0
 if ext4load mmc 1:4 ${bm_cfg} /bootconfig.txt; then setenv bm_len ${filesize}; fi
 if test "x${bm_len}" = "x0"; then if ext4load mmc 1:4 ${bm_cfg} /bootmenu/bootconfig.bak; then setenv bm_len ${filesize}; setenv bm_src 1; fi; fi
-if ext4load mmc 1:4 ${bm_app} /bootmenu/bootmenu.bin; then dcache flush; icache flush; go ${bm_app} ${bm_cfg} ${bm_len} ${bm_res} 0x${initrd_high} 500 2d0 ${bm_logo} ${bm_src} ${outputmode}; fi
+# The entry started last lives in the last sector of u-boot-env: the program
+# finds it in the GPT, the menu reads and updates it, the script writes it
+# back only when the menu asks for it.
+setenv bm_gpt 0x03840000
+setenv bm_rec 0
+setenv bm_recwrite 0
+setenv bm_ok 0
+if ext4load mmc 1:4 ${bm_app} /bootmenu/bootmenu.bin; then setenv bm_ok 1; dcache flush; icache flush; fi
+if test "x${bm_ok}" = "x1"; then if mmc dev 1; then if mmc read ${bm_gpt} 0 22; then go ${bm_app} gpt ${bm_gpt} ${bm_res}; fi; fi; fi
 setexpr.l bm_magic *${bm_res}
-if itest.l ${bm_magic} == 4d454e55; then setexpr bm_txt ${bm_res} + 10; env import -t ${bm_txt}; setenv bootargs ${bm_arg}; setenv bootcmd "setenv loadaddr 1080000; run bm_cmd"; setenv loadaddr; fi
+if itest.l ${bm_magic} == 4d454e55; then setexpr bm_txt ${bm_res} + 10; env import -t ${bm_txt}; if mmc read 0x03830000 ${bm_recblk} 1; then setenv bm_rec 0x03830000; fi; fi
+mw.l ${bm_res} 0 4
+if test "x${bm_ok}" = "x1"; then go ${bm_app} ${bm_cfg} ${bm_len} ${bm_res} 0x${initrd_high} 500 2d0 ${bm_logo} ${bm_src} ${bm_rec} ${outputmode}; fi
+setexpr.l bm_magic *${bm_res}
+if itest.l ${bm_magic} == 4d454e55; then setexpr bm_txt ${bm_res} + 10; env import -t ${bm_txt}; setenv bootargs ${bm_arg}; setenv bootcmd "setenv loadaddr 1080000; run bm_cmd"; setenv loadaddr; if test "x${bm_recwrite}" = "x1"; then mmc write ${bm_rec} ${bm_recblk} 1; fi; fi

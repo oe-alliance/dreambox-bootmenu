@@ -42,7 +42,7 @@ typedef unsigned long u64;
 
 #define RC_TOGGLE	0x80u		/* set in the second frame of a press */
 
-#define BOOTMENU_VERSION	"1.5"	/* a change here tags a release */
+#define BOOTMENU_VERSION	"1.6"	/* a change here tags a release */
 
 #define RESULT_MAGIC	0x4d454e55u	/* "MENU" */
 
@@ -888,7 +888,7 @@ static char *emit_value(char *p, const char *s, int len)
  *   +0x0c  length of the text block including its terminator
  *   +0x10  bm_sel/bm_title/bm_cmd/bm_arg, one per line, NUL terminated
  */
-static void write_result(unsigned long addr, struct config *cfg, int selected)
+static void write_result(unsigned long addr, struct config *cfg, int selected, int save)
 {
 	struct entry *e = &cfg->entry[selected];
 	char *text = (char *)(addr + 0x10);
@@ -902,6 +902,8 @@ static void write_result(unsigned long addr, struct config *cfg, int selected)
 	p = emit_value(p, e->cmd, e->cmdlen);
 	p = emit(p, "\nbm_arg=");
 	p = emit_value(p, e->arg, e->arglen);
+	if (save)
+		p = emit(p, "\nbm_recwrite=1");
 	*p++ = '\n';
 	*p++ = 0;
 
@@ -1139,13 +1141,123 @@ static int fallback_config(char *buf, const char *mode)
 /* The video mode from u-boot, letters and digits only, e.g. 1080p50hz. */
 static const char *video_mode(int argc, char * const argv[])
 {
-	const char *s = argc > 9 ? argv[9] : "";
+	const char *s = argc > 10 ? argv[10] : "";
 	int i;
 
 	for (i = 0; s[i]; i++)
 		if (i >= 16 || !((s[i] >= '0' && s[i] <= '9') || (s[i] >= 'a' && s[i] <= 'z')))
 			return "1080p50hz";
 	return i ? s : "1080p50hz";
+}
+
+/*
+ * The entry last started from the menu is kept in a sector of its own, the
+ * last one of the u-boot-env partition; the environment itself only takes the
+ * first 64 KB of it.  So images that never set default= in bootconfig.txt still
+ * start with the slot booted last.  Once an image changes default=, the file
+ * wins again: the record also holds the default= it was written against.
+ */
+#define REC_MAGIC	0x4c4d4d42u	/* "BMML" */
+#define SECTOR		512
+
+struct last_boot {
+	u32 magic;
+	u32 last;		/* index of the entry started */
+	u32 seen;		/* default= of bootconfig.txt at that time */
+	u32 count;		/* number of entries at that time */
+	u32 check;
+};
+
+static u32 rec_check(const struct last_boot *r)
+{
+	return r->magic ^ r->last ^ r->seen ^ r->count ^ 0x5a5aa5a5u;
+}
+
+static int rec_valid(const struct last_boot *r)
+{
+	return r->magic == REC_MAGIC && r->check == rec_check(r);
+}
+
+/* Writes a record only over itself or over a sector that is all zero. */
+static int rec_update(struct last_boot *r, int selected, int seen, int count)
+{
+	const u8 *b = (const u8 *)r;
+	int i;
+
+	if (rec_valid(r) && r->last == (u32)selected && r->seen == (u32)seen && r->count == (u32)count)
+		return 0;
+	if (!rec_valid(r))
+		for (i = 0; i < SECTOR; i++)
+			if (b[i])
+				return 0;
+	r->magic = REC_MAGIC;
+	r->last = (u32)selected;
+	r->seen = (u32)seen;
+	r->count = (u32)count;
+	r->check = rec_check(r);
+	return 1;
+}
+
+static u64 le64(const u8 *p)
+{
+	return le32(p) | (u64)le32(p + 4) << 32;
+}
+
+static char *emit_hex(char *p, u64 value)
+{
+	static const char digits[] = "0123456789abcdef";
+	int i = 60;
+
+	p = emit(p, "0x");
+	while (i > 0 && !((value >> i) & 0xf))
+		i -= 4;
+	for (; i >= 0; i -= 4)
+		*p++ = digits[(value >> i) & 0xf];
+	return p;
+}
+
+/*
+ * "go <load> gpt <gpt> <result>": the script read sectors 0 to 33 of the eMMC
+ * to <gpt>; hands back the last sector of the u-boot-env partition as
+ * bm_recblk, in the same result format as the menu.
+ */
+static int find_record(unsigned long gpt, unsigned long addr)
+{
+	static const char name[] = "u-boot-env";
+	const u8 *h = (const u8 *)(gpt + SECTOR);
+	u32 n, size, i, k;
+
+	for (i = 0; i < 8; i++)
+		if (h[i] != (u8)"EFI PART"[i])
+			return 1;
+	n = le32(h + 80);
+	size = le32(h + 84);
+	if (le64(h + 72) != 2 || size < 128 || n * size > 32 * SECTOR)
+		return 1;
+	for (i = 0; i < n; i++) {
+		const u8 *e = (const u8 *)(gpt + 2 * SECTOR + i * size);
+		u64 first = le64(e + 32), last = le64(e + 40);
+		char *text = (char *)(addr + 0x10), *p = text;
+
+		for (k = 0; k < sizeof(name); k++)
+			if (e[56 + 2 * k] != (u8)name[k] || e[57 + 2 * k])
+				break;
+		if (k < sizeof(name))
+			continue;
+		/* Far beyond the 64 KB of the environment, or not at all. */
+		if (last < first + 1024)
+			return 1;
+		p = emit(p, "bm_recblk=");
+		p = emit_hex(p, last);
+		*p++ = '\n';
+		*p++ = 0;
+		writel(addr + 4, 0);
+		writel(addr + 8, 0);
+		writel(addr + 12, (u32)(p - text));
+		writel(addr, RESULT_MAGIC);
+		return 0;
+	}
+	return 1;
 }
 
 /* Linked first, at the load address, so "go" lands here. */
@@ -1162,8 +1274,12 @@ int menu_main(int argc, char * const argv[])
 	u64 deadline, second;
 	struct remote rc;
 	char fallback[FALLBACK_MAX];
+	struct last_boot *rec;
+	int file_def;
 
 	/* "go" passes its own address as argv[0], the arguments follow. */
+	if (argc == 4 && argv[1][0] == 'g')
+		return find_record(parse_arg(argv[2]), parse_arg(argv[3]));
 	if (argc < 4) {
 		puts("menu: go <load> <cfg> <cfglen> <result> "
 		     "[<fb> [<width> <height> [<logo>]]]\n");
@@ -1191,6 +1307,14 @@ int menu_main(int argc, char * const argv[])
 		puts("menu: no entries in bootconfig.txt, fallback entries\n");
 		parse_config(fallback, fallback_config(fallback, video_mode(argc, argv)), &cfg);
 		cfg.source = CFG_BUILTIN;
+	}
+
+	file_def = cfg.def;
+	rec = argc > 9 && cfg.source != CFG_BUILTIN ? (struct last_boot *)parse_arg(argv[9]) : 0;
+	if (rec && rec_valid(rec) && rec->seen == (u32)file_def && rec->count == (u32)cfg.count &&
+	    rec->last < (u32)cfg.count && rec->last != (u32)file_def) {
+		puts("menu: default is the entry started last\n");
+		cfg.def = (int)rec->last;
 	}
 
 	cfg.total = cfg.timeout;
@@ -1257,7 +1381,7 @@ int menu_main(int argc, char * const argv[])
 		puts(" (");
 		puts(cfg.entry[selected].title);
 		puts(")\n");
-		write_result(result_addr, &cfg, selected);
+		write_result(result_addr, &cfg, selected, rec && rec_update(rec, selected, file_def, cfg.count));
 		return 0;
 	}
 
@@ -1330,6 +1454,6 @@ int menu_main(int argc, char * const argv[])
 	puts(")\n");
 
 	fade_out(&screen, 24, 40);
-	write_result(result_addr, &cfg, selected);
+	write_result(result_addr, &cfg, selected, rec && rec_update(rec, selected, file_def, cfg.count));
 	return 0;
 }

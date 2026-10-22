@@ -53,7 +53,9 @@ and nothing starts until OK is pressed. The dots left and right of an entry
 mark the default one, the entry that starts on its own and is selected when
 the menu comes up. Which entry is the default, and how long the countdown
 runs, is set in the image's multiboot settings (`default=` and `timeout=` in
-`/data/bootconfig.txt`).
+`/data/bootconfig.txt`). The menu also remembers the entry it started last
+and makes it the default next time, also for images that have no multiboot
+settings; see below.
 
 "IR" left of the ring or "BT" right of it lights up for a second whenever a
 key arrives, by infrared or by Bluetooth. The line "Slot 3 / 16" above the
@@ -75,6 +77,19 @@ the menu, and the built-in menu follows.
 countdown of `timeout=` seconds in the ring at the bottom. The countdown runs
 down to 0 like the built-in menu, then the selected entry starts. Up, down,
 left or right stop it, and a ring around "OK" stands where the countdown was.
+
+**The entry started last** becomes the default, as long as no image changed
+`default=` since. openATV sets `default=` to its own slot whenever it starts,
+other images leave it alone, so without this the menu would keep offering a
+slot that is no longer in use. The menu keeps its own small record, the entry
+it started, the `default=` and the number of entries at that time, in the last
+sector of the `u-boot-env` partition, which it finds in the GPT. The u-boot
+environment only uses the first 64 KB of that partition, `/data` and
+`bootconfig.txt` stay untouched. The record is written only when the choice
+changed, and only over a sector that holds nothing or such a record. Once an
+image changes `default=`, or entries are added or removed, the record no
+longer counts and `default=` applies again; with the fallback entries it is
+neither read nor written.
 
 **With `timeout=0`** there is no logo and no menu, the default entry starts
 right away. The built-in menu does the same, but rejects such a file and
@@ -171,7 +186,7 @@ without a download, by hand or from a start script:
 
 A u-boot standalone program, started as
 
-    go <load> <cfg> <cfglen> <result> [<fb> [<width> <height> [<logo> [<copy> [<mode>]]]]]
+    go <load> <cfg> <cfglen> <result> [<fb> [<width> <height> [<logo> [<copy> [<record> [<mode>]]]]]]
 
 - `cfg`/`cfglen`: `bootconfig.txt`, already loaded by the script
 - `result`: where the choice is written
@@ -179,8 +194,15 @@ A u-boot standalone program, started as
 - `logo`: `bootlogo.bmp` as loaded by the script (RGB565, screen size); it is
   drawn only when the menu shows
 - `copy`: 1 when `cfg` is `bootconfig.bak`, for the note below the ring
+- `record`: the sector with the entry started last, as read by the script,
+  0 without one; the menu updates it and asks for it to be written back with
+  `bm_recwrite=1` in the result
 - `mode`: u-boot's `outputmode`, used in `arg=` of the fallback entries
   (1080p50hz without it)
+
+Started as `go <load> gpt <gpt> <result>` with sectors 0 to 33 of the eMMC at
+`gpt`, it only looks up the `u-boot-env` partition and hands back its last
+sector as `bm_recblk`.
 
 The result is a magic (`0x4d454e55`), a zero word, the index and the length
 of a text block with `bm_sel`, `bm_title`, `bm_cmd` and `bm_arg` for
