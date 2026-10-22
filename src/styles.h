@@ -96,6 +96,33 @@ static int ink_left(const struct font *f, const char *t, int cx)
 	return lo > hi ? cx : cx - (lo + hi) / 2;
 }
 
+/* INFO or HELP: what the menu is made of and under which licenses. */
+static void draw_info(struct screen *s)
+{
+	static const char *const lines[] = {
+		"Boot menu for the Dreambox One and Two",
+		"Copyright (C) 2026 OE-Alliance",
+		"GNU General Public License version 3",
+		"Source: github.com/oe-alliance/dreambox-bootmenu",
+		"Glyphs from the Roboto fonts by Google, Apache License 2.0",
+		"The license texts are in /data/bootmenu",
+	};
+	static const char title[] = "dreambox-bootmenu v" BOOTMENU_VERSION;
+	static const char hint[] = "Any key returns to the list";
+	const int cx = 640;
+	unsigned int i;
+
+	fill(s, 0, MENU_TOP, s->width, s->height - MENU_TOP, C_BLACK);
+	text(s, &font_head, cx - text_width(&font_head, title) / 2, MENU_TOP + 7, title,
+	     RGB(214, 220, 206), s->width);
+	for (i = 0; i < sizeof(lines) / sizeof(lines[0]); i++)
+		text(s, &font_far, cx - text_width(&font_far, lines[i]) / 2, MENU_TOP + 80 + (int)i * 40,
+		     lines[i], i < 1 ? C_LOGO : RGB(160, 166, 154), s->width);
+	text(s, &font_micro, cx - text_width(&font_micro, hint) / 2, RING_Y + 28, hint,
+	     RGB(90, 96, 86), s->width);
+	flush(s, MENU_TOP, s->height - MENU_TOP);
+}
+
 /* C: a wheel, the chosen entry large between two lines. */
 static void draw_menu(struct screen *s, struct config *cfg, int selected,
 		      int remaining, int src)

@@ -483,6 +483,7 @@ static u32 ir_decode(const u32 *len, int count)
 #define BT_DOWN		0x000080
 #define BT_LEFT		0x004000
 #define BT_RIGHT	0x400000
+#define BT_INFO		0x002000
 #define BT_OTHER	0x1000000	/* a key in the other bytes */
 
 struct fp_rx {
@@ -547,7 +548,7 @@ static int fp_keys(struct fp_rx *fp, int *keys)
 	return 1;
 }
 
-enum action { ACT_NONE, ACT_UP, ACT_DOWN, ACT_OK, ACT_FIRST, ACT_LAST, ACT_ABORT };
+enum action { ACT_NONE, ACT_UP, ACT_DOWN, ACT_OK, ACT_FIRST, ACT_LAST, ACT_INFO, ACT_ABORT };
 
 static const char *action_name(enum action act)
 {
@@ -562,6 +563,8 @@ static const char *action_name(enum action act)
 		return "left";
 	case ACT_LAST:
 		return "right";
+	case ACT_INFO:
+		return "info";
 	default:
 		return "unknown";
 	}
@@ -613,6 +616,8 @@ static enum action bt_action(int keys)
 		return ACT_FIRST;
 	if (keys & BT_RIGHT)
 		return ACT_LAST;
+	if (keys & BT_INFO)
+		return ACT_INFO;
 	return ACT_NONE;
 }
 
@@ -683,12 +688,12 @@ static void ir_report(const u32 *len, int count, u32 code)
 /* Dreambox remotes, NEC with the address in the low byte. */
 static const struct {
 	u8 address;
-	u8 up, down, ok, left, right;
+	u8 up, down, ok, left, right, info, help;
 } remotes[] = {
-	{ 0x32, 0x11, 0x17, 0x14, 0x13, 0x15 },
-	{ 0x33, 0x11, 0x17, 0x14, 0x13, 0x15 },
-	{ 0x34, 0x11, 0x19, 0x15, 0x14, 0x16 },
-	{ 0x35, 0x11, 0x19, 0x15, 0x14, 0x16 },
+	{ 0x32, 0x11, 0x17, 0x14, 0x13, 0x15, 0x10, 0x16 },
+	{ 0x33, 0x11, 0x17, 0x14, 0x13, 0x15, 0x10, 0x16 },
+	{ 0x34, 0x11, 0x19, 0x15, 0x14, 0x16, 0x1b, 0x26 },
+	{ 0x35, 0x11, 0x19, 0x15, 0x14, 0x16, 0x1b, 0x26 },
 };
 
 static enum action rc_action(u32 code)
@@ -714,6 +719,9 @@ static enum action rc_action(u32 code)
 			return ACT_FIRST;
 		if (command == remotes[i].right)
 			return ACT_LAST;
+		/* Not every remote has both keys. */
+		if (command == remotes[i].info || command == remotes[i].help)
+			return ACT_INFO;
 	}
 	return ACT_NONE;
 }
@@ -743,6 +751,8 @@ static enum action read_key(struct remote *rc)
 			return ACT_FIRST;
 		if (c == 'l' || c == 'C')
 			return ACT_LAST;
+		if (c == 'i')
+			return ACT_INFO;
 		if (c == '\r' || c == '\n' || c == ' ')
 			return ACT_OK;
 		if (c == 'q' || c == 0x03)
@@ -1270,7 +1280,7 @@ int menu_main(int argc, char * const argv[])
 	struct screen screen;
 	unsigned long cfg_addr, result_addr, logo_addr;
 	u32 cfg_len;
-	int selected, remaining, redraw = 1, held = 0, shown = SRC_NONE;
+	int selected, remaining, redraw = 1, held = 0, shown = SRC_NONE, info = 0;
 	u64 deadline, second;
 	struct remote rc;
 	char fallback[FALLBACK_MAX];
@@ -1397,7 +1407,10 @@ int menu_main(int argc, char * const argv[])
 			redraw = 1;
 		}
 		if (redraw) {
-			draw_menu(&screen, &cfg, selected, remaining, shown);
+			if (info)
+				draw_info(&screen);
+			else
+				draw_menu(&screen, &cfg, selected, remaining, shown);
 			redraw = 0;
 		}
 
@@ -1412,6 +1425,18 @@ int menu_main(int argc, char * const argv[])
 				puthex(rc.code);
 				puts(")\n");
 			}
+		}
+		/* Any key leaves the license page, OK there starts nothing. */
+		if (info && act != ACT_NONE && act != ACT_ABORT) {
+			info = 0;
+			redraw = 1;
+			continue;
+		}
+		if (act == ACT_INFO) {
+			info = 1;
+			cfg.timeout = 0;
+			redraw = 1;
+			continue;
 		}
 		if (act == ACT_OK)
 			break;
