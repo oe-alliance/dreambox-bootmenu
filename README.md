@@ -140,7 +140,8 @@ picture again, so the countdown may already have started when the menu
 appears. The image that starts sets its own mode and colour space.
 
 **The remotes:** infrared remotes send NEC codes, on addresses `0x32` to
-`0x35` with the same two key tables as the Linux driver. A Bluetooth remote
+`0x35` with the same two key tables as the Linux driver; the protocol is
+described in [Dreambox infrared (IR) remote control protocol](https://dreambox.de/board/wcf/index.php?article/4-dreambox-infrared-ir-remote-control-protocol/). A Bluetooth remote
 sends its first press by infrared and the rest over Bluetooth to the front
 processor of the box, which passes its key reports on over a UART of its own;
 the menu reads both. The console logs every key with where it came from and
