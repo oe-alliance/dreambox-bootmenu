@@ -128,7 +128,7 @@ static void draw_info(struct screen *s)
 	for (i = 0; i < sizeof(lines) / sizeof(lines[0]); i++)
 		text(s, &font_far, cx - text_width(&font_far, lines[i]) / 2, MENU_TOP + 80 + (int)i * 40,
 		     lines[i], i < 1 ? C_LOGO : RGB(160, 166, 154), s->width);
-	text(s, &font_micro, cx - text_width(&font_micro, hint) / 2, ABOUT_Y, hint,
+	text(s, &font_tiny, cx - text_width(&font_tiny, hint) / 2, ABOUT_Y, hint,
 	     RGB(90, 96, 86), s->width);
 }
 
