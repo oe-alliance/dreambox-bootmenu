@@ -487,14 +487,15 @@ static u32 ir_decode(const u32 *len, int count)
 #define FP_MAX		64
 #define FP_ASK_MS	2000	/* asks for the battery again on a key, at most this often */
 
-/* Bits of fp_keys(): the third key byte, the first one << 8, the fifth << 16. */
+/* Bits of fp_keys(): the third key byte, the first one << 8, the fifth << 16, EXIT << 24. */
 #define BT_UP		0x000020
 #define BT_OK		0x000040
 #define BT_DOWN		0x000080
 #define BT_LEFT		0x004000
 #define BT_RIGHT	0x400000
 #define BT_INFO		0x002000
-#define BT_OTHER	0x1000000	/* a key in the other bytes */
+#define BT_EXIT		0x1000000	/* bit 0 of the fourth byte */
+#define BT_OTHER	0x2000000	/* a key in the other bytes */
 
 struct fp_rx {
 	u8 buf[FP_MAX];
@@ -605,6 +606,12 @@ static void fp_answer(struct fp_rx *fp, const u8 *f)
 	}
 }
 
+static int fp_bits(const u8 *f)
+{
+	return f[5] | f[3] << 8 | f[7] << 16 | (f[6] & 1) << 24 |
+	       (f[4] | (f[6] & ~1) | f[8] ? BT_OTHER : 0);
+}
+
 /* Returns 1 for a key frame and puts its keys in *keys. */
 static int fp_keys(struct fp_rx *fp, int *keys)
 {
@@ -617,11 +624,11 @@ static int fp_keys(struct fp_rx *fp, int *keys)
 		fp_answer(fp, f);
 		return 0;
 	}
-	*keys = f[5] | f[3] << 8 | f[7] << 16 | (f[4] | f[6] | f[8] ? BT_OTHER : 0);
+	*keys = fp_bits(f);
 	return 1;
 }
 
-enum action { ACT_NONE, ACT_UP, ACT_DOWN, ACT_OK, ACT_FIRST, ACT_LAST, ACT_INFO, ACT_ABORT };
+enum action { ACT_NONE, ACT_UP, ACT_DOWN, ACT_OK, ACT_FIRST, ACT_LAST, ACT_INFO, ACT_EXIT, ACT_ABORT };
 
 static const char *action_name(enum action act)
 {
@@ -638,6 +645,8 @@ static const char *action_name(enum action act)
 		return "right";
 	case ACT_INFO:
 		return "info";
+	case ACT_EXIT:
+		return "exit";
 	default:
 		return "unknown";
 	}
@@ -692,6 +701,8 @@ static enum action bt_action(int keys)
 		return ACT_LAST;
 	if (keys & BT_INFO)
 		return ACT_INFO;
+	if (keys & BT_EXIT)
+		return ACT_EXIT;
 	return ACT_NONE;
 }
 
@@ -767,12 +778,12 @@ static void ir_report(const u32 *len, int count, u32 code)
 /* Dreambox remotes, NEC with the address in the low byte. */
 static const struct {
 	u8 address;
-	u8 up, down, ok, left, right, info, help;
+	u8 up, down, ok, left, right, info, help, exit;
 } remotes[] = {
-	{ 0x32, 0x11, 0x17, 0x14, 0x13, 0x15, 0x10, 0x16 },
-	{ 0x33, 0x11, 0x17, 0x14, 0x13, 0x15, 0x10, 0x16 },
-	{ 0x34, 0x11, 0x19, 0x15, 0x14, 0x16, 0x1b, 0x26 },
-	{ 0x35, 0x11, 0x19, 0x15, 0x14, 0x16, 0x1b, 0x26 },
+	{ 0x32, 0x11, 0x17, 0x14, 0x13, 0x15, 0x10, 0x16, 0x1d },
+	{ 0x33, 0x11, 0x17, 0x14, 0x13, 0x15, 0x10, 0x16, 0x1d },
+	{ 0x34, 0x11, 0x19, 0x15, 0x14, 0x16, 0x1b, 0x26, 0x12 },
+	{ 0x35, 0x11, 0x19, 0x15, 0x14, 0x16, 0x1b, 0x26, 0x12 },
 };
 
 static enum action rc_action(u32 code)
@@ -801,6 +812,8 @@ static enum action rc_action(u32 code)
 		/* Not every remote has both keys. */
 		if (command == remotes[i].info || command == remotes[i].help)
 			return ACT_INFO;
+		if (command == remotes[i].exit)
+			return ACT_EXIT;
 	}
 	return ACT_NONE;
 }
@@ -832,6 +845,8 @@ static enum action read_key(struct remote *rc)
 			return ACT_LAST;
 		if (c == 'i')
 			return ACT_INFO;
+		if (c == 'x')
+			return ACT_EXIT;
 		if (c == '\r' || c == '\n' || c == ' ')
 			return ACT_OK;
 		if (c == 'q' || c == 0x03)
@@ -1096,7 +1111,7 @@ static void fp_report(const u8 *f, int n, char *p)
 		return;
 	}
 	if (f[1] == FP_TAG_KEYS && f[2] == 6) {
-		int keys = f[5] | f[3] << 8 | f[7] << 16 | (f[4] | f[6] | f[8] ? BT_OTHER : 0);
+		int keys = fp_bits(f);
 
 		p = add(p, "  ");
 		if (!keys)
@@ -1533,6 +1548,11 @@ int menu_main(int argc, char * const argv[])
 		}
 		if (act == ACT_OK)
 			break;
+		if (act == ACT_EXIT) {
+			/* Leaves the menu with the default, whatever is selected. */
+			selected = cfg.def;
+			break;
+		}
 		if (act == ACT_ABORT) {
 			/* No magic: the script ends and the built-in menu follows. */
 			puts("menu: aborted\n");

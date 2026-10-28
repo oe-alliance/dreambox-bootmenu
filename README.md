@@ -52,6 +52,7 @@ the middle, between the two lines, is the one that starts.
 | left | jumps to the first entry |
 | right | jumps to the last entry |
 | OK | starts the entry in the middle |
+| EXIT | starts the default entry, whichever is selected |
 | OK held while the box starts | brings the menu even with `timeout=0`, without a countdown |
 | INFO or HELP | shows the version, the copyright and the licenses; any key returns to the list |
 
@@ -80,8 +81,8 @@ Every Dreambox remote of the One and Two works, by infrared as well as by
 Bluetooth. A remote switched to its TV mode sends codes for the TV, which the
 menu does not take.
 
-On the serial console (115200 baud), `u`, `d`, `f`, `l`, `i` and Return or the
-arrow keys do the same as up, down, left, right, INFO and OK; `q` or Ctrl+C leaves
+On the serial console (115200 baud), `u`, `d`, `f`, `l`, `i`, `x` and Return or the
+arrow keys do the same as up, down, left, right, INFO, EXIT and OK; `q` or Ctrl+C leaves
 the menu, and the built-in menu follows.
 
 ## What the menu does
