@@ -1364,7 +1364,7 @@ int menu_main(int argc, char * const argv[])
 int menu_main(int argc, char * const argv[])
 {
 	struct config cfg;
-	struct screen screen;
+	struct screen screen, back;
 	unsigned long cfg_addr, result_addr, logo_addr;
 	u32 cfg_len;
 	int selected, remaining, redraw = 1, held = 0, shown = SRC_NONE, info = 0, battery = -1, rssi = 0;
@@ -1392,6 +1392,8 @@ int menu_main(int argc, char * const argv[])
 	screen.width = argc > 6 ? (int)parse_arg(argv[5]) : 1280;
 	screen.height = argc > 6 ? (int)parse_arg(argv[6]) : 720;
 	screen.stride = screen.width;
+	back = screen;
+	back.fb = (volatile u16 *)BACK_BUF;
 	/* The logo is only loaded, it is drawn once the menu shows. */
 	logo_addr = argc > 7 ? parse_arg(argv[7]) : 0;
 
@@ -1498,9 +1500,10 @@ int menu_main(int argc, char * const argv[])
 		}
 		if (redraw) {
 			if (info)
-				draw_info(&screen);
+				draw_info(&back);
 			else
-				draw_menu(&screen, &cfg, selected, remaining, shown, battery, rssi);
+				draw_menu(&back, &cfg, selected, remaining, shown, battery, rssi);
+			present(&screen, &back, MENU_TOP);
 			redraw = 0;
 		}
 

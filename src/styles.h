@@ -130,7 +130,6 @@ static void draw_info(struct screen *s)
 		     lines[i], i < 1 ? C_LOGO : RGB(160, 166, 154), s->width);
 	text(s, &font_micro, cx - text_width(&font_micro, hint) / 2, ABOUT_Y, hint,
 	     RGB(90, 96, 86), s->width);
-	flush(s, MENU_TOP, s->height - MENU_TOP);
 }
 
 /* Battery of the Bluetooth remote, its level in the middle: red up to 10 %, yellow up to 20 %. */
@@ -251,5 +250,4 @@ static void draw_menu(struct screen *s, struct config *cfg, int selected,
 		text(s, &font_micro, cx - text_width(&font_micro, note) / 2, NOTE_Y, note, C_NOTE, s->width);
 	}
 	draw_about(s, cx, RGB(90, 96, 86));
-	flush(s, MENU_TOP, s->height - MENU_TOP);
 }

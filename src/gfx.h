@@ -30,6 +30,8 @@ struct font {
  * secure monitor carve-out at 0x05000000. */
 #define GLOW_BUF	0x20000000UL
 #define GLOW_TMP	0x20400000UL
+/* The menu is drawn here and then copied, so the screen never shows it half drawn. */
+#define BACK_BUF	0x20800000UL
 
 static inline u16 pack565(u32 r, u32 g, u32 b)
 {
@@ -137,6 +139,18 @@ static void flush(struct screen *s, int y, int h)
 	for (; start < end; start += step)
 		asm volatile("dc cvac, %0" : : "r"(start) : "memory");
 	asm volatile("dsb sy" : : : "memory");
+}
+
+/* Copies the lines from y down of the finished picture in back to the screen. */
+static void present(struct screen *s, const struct screen *back, int y)
+{
+	volatile u64 *d = (volatile u64 *)(s->fb + (long)y * s->stride);
+	const u64 *p = (const u64 *)(back->fb + (long)y * s->stride);
+	long i, n = (long)(s->height - y) * s->stride / 4;
+
+	for (i = 0; i < n; i++)
+		d[i] = p[i];
+	flush(s, y, s->height - y);
 }
 
 static u32 le32(const u8 *p)
