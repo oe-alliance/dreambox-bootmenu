@@ -54,7 +54,7 @@ the middle, between the two lines, is the one that starts.
 | OK | starts the entry in the middle |
 | EXIT | starts the default entry, whichever is selected |
 | OK held while the box starts | brings the menu even with `timeout=0`, without a countdown |
-| INFO or HELP | shows the version, the copyright and the licenses; any key returns to the list |
+| INFO or HELP | shows the version, the copyright, the licenses and the firmware and battery of a Bluetooth remote; any key returns to the list |
 
 The ring at the bottom counts the seconds until the selected entry starts on
 its own. Up, down, left or right stop the countdown; the ring then shows "OK",
@@ -68,14 +68,15 @@ settings; see below.
 
 "IR" left of the ring or "BT" right of it lights up while a key is held
 down, by infrared or by Bluetooth. The line "Slot 3 / 16" above the list
-says which of how many entries is selected. Below the ring, "v1.6 · INFO ·
+says which of how many entries is selected. Below the ring, "v1.7 · INFO ·
 License" gives the version of the boot menu and the key for the license
 page; HELP opens it too, on remotes that have that key. Right of "BT", a
 battery shows for 5 seconds after each key of a Bluetooth remote how full
 its battery is, in percent; yellow from 20 % down, red from 10 % down. Four
 bars right of it give the signal of the remote, one bar each from -90, -80,
 -70 and -60 dBm. Both appear once the remote has reported them: the menu
-asks for the battery, the signal the remote sends now and then by itself.
+asks for the battery a few times after the start and then on each key until
+the remote answers, the signal the remote sends now and then by itself.
 
 Every Dreambox remote of the One and Two works, by infrared as well as by
 Bluetooth. A remote switched to its TV mode sends codes for the TV, which the
@@ -154,7 +155,8 @@ sends its first press by infrared and the rest over Bluetooth to the front
 processor of the box, which passes its key reports on over a UART of its own;
 the menu reads both. The console logs every key with where it came from and
 its code. For the battery the menu asks the front processor which remotes
-are connected and then each of them for its level.
+are connected and then each of them for its level and its firmware, again
+whenever a remote connects.
 
 ## Installing
 

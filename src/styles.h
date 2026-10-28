@@ -106,8 +106,29 @@ static void draw_about(struct screen *s, int cx, u32 color)
 	text(s, &font_micro, ink_left(&font_micro, about, cx), ABOUT_Y, about, color, s->width);
 }
 
-/* INFO or HELP: what the menu is made of and under which licenses. */
-static void draw_info(struct screen *s)
+static char *put_str(char *p, const char *t)
+{
+	while (*t)
+		*p++ = *t++;
+	*p = 0;
+	return p;
+}
+
+static char *put_num(char *p, int v)
+{
+	char num[12];
+	int k = 11;
+
+	num[k] = 0;
+	do {
+		num[--k] = (char)('0' + v % 10);
+		v /= 10;
+	} while (v);
+	return put_str(p, num + k);
+}
+
+/* INFO or HELP: what the menu is made of and under which licenses, and what the Bluetooth remote said. */
+static void draw_info(struct screen *s, int version, int battery)
 {
 	static const char *const lines[] = {
 		"Boot menu for the Dreambox One and Two",
@@ -128,6 +149,24 @@ static void draw_info(struct screen *s)
 	for (i = 0; i < sizeof(lines) / sizeof(lines[0]); i++)
 		text(s, &font_far, cx - text_width(&font_far, lines[i]) / 2, MENU_TOP + 80 + (int)i * 40,
 		     lines[i], i < 1 ? C_LOGO : RGB(160, 166, 154), s->width);
+	if (version || battery > 0) {
+		char bt[64], *p = put_str(bt, "Bluetooth remote");
+
+		if (version) {
+			p = put_str(p, ": firmware ");
+			p = put_num(p, version >> 8);
+			p = put_str(p, ".");
+			p = put_num(p, version & 0xff);
+		}
+		if (battery > 0) {
+			p = put_str(p, version ? ", battery " : ": battery ");
+			p = put_num(p, battery);
+			put_str(p, " %");
+		}
+		/* Apart from the license lines, where the list has its ring. */
+		text(s, &font_far, cx - text_width(&font_far, bt) / 2, RING_Y - font_far.height / 2,
+		     bt, C_GLOW, s->width);
+	}
 	text(s, &font_tiny, cx - text_width(&font_tiny, hint) / 2, ABOUT_Y, hint,
 	     RGB(90, 96, 86), s->width);
 }

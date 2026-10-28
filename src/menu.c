@@ -42,7 +42,7 @@ typedef unsigned long u64;
 
 #define RC_TOGGLE	0x80u		/* set in the second frame of a press */
 
-#define BOOTMENU_VERSION	"1.6"	/* a change here tags a release */
+#define BOOTMENU_VERSION	"1.7"	/* a change here tags a release */
 
 #define RESULT_MAGIC	0x4d454e55u	/* "MENU" */
 
@@ -470,8 +470,10 @@ static u32 ir_decode(const u32 *len, int count)
  * Commands go the same way, padded with 0x5a to a multiple of 16 bytes.
  * 0x62 asks for the connected remotes, the answer is 0x01 and per remote
  * its address and flags; 0xd6 with an address asks for its battery, the
- * answer 0x6c is the address and the level in percent.  0x6b, the address
- * and the signal strength in dBm, comes by itself now and then.
+ * answer 0x6c is the address and the level in percent; 0xe1 asks for its
+ * firmware, the answer 0xd7 is the address, minor and major.  0x6b, the
+ * address and the signal strength in dBm, comes by itself now and then, so
+ * does 0x6d, the address and the state once a remote connects.
  */
 #define FP_BASE		0xff804000UL
 #define FP_CONTROL	0x08
@@ -484,8 +486,12 @@ static u32 ir_decode(const u32 *len, int count)
 #define FP_ASK_BATTERY	0xd6
 #define FP_BATTERY	0x6c
 #define FP_RSSI		0x6b
+#define FP_STATE	0x6d
+#define FP_ASK_VERSION	0xe1
+#define FP_VERSION	0xd7
 #define FP_MAX		64
-#define FP_ASK_MS	2000	/* asks for the battery again on a key, at most this often */
+#define FP_ASK_MS	2000	/* asks for the battery again, at most this often */
+#define FP_ASK_TRIES	5	/* that many times without a key, each one makes the remote blink */
 
 /* Bits of fp_keys(): the third key byte, the first one << 8, the fifth << 16, EXIT << 24. */
 #define BT_UP		0x000020
@@ -502,6 +508,8 @@ struct fp_rx {
 	int pos;
 	int battery;		/* percent of the Bluetooth remote, -1 until it says */
 	int rssi;		/* its signal in dBm, 0 until it says */
+	int version;		/* its firmware, major << 8 | minor, 0 until it says */
+	int tries;		/* questions asked without a key */
 	u64 asked;
 };
 
@@ -581,18 +589,37 @@ static void fp_init(struct fp_rx *fp)
 	fp->pos = 0;
 	fp->battery = -1;
 	fp->rssi = 0;
+	fp->version = 0;
+	fp->tries = 0;
 	fp_ask(fp);
 }
 
-/* The answers to fp_ask(): each connected remote is asked for its battery. */
+static void fp_ask_remote(const u8 *addr)
+{
+	fp_send(FP_ASK_BATTERY, addr, 6);
+	fp_send(FP_ASK_VERSION, addr, 6);
+}
+
+/* The answers to fp_ask(): each connected remote is asked for its battery and firmware. */
 static void fp_answer(struct fp_rx *fp, const u8 *f)
 {
 	int i;
 
 	if (f[1] == FP_CONNECTED && f[2] >= 1 && f[3] == 0x01 && (f[2] - 1) % 7 == 0) {
 		for (i = 4; i + 7 <= 3 + f[2]; i += 7)
-			fp_send(FP_ASK_BATTERY, f + i, 6);
-	} else if (f[1] == FP_BATTERY && f[2] >= 7 && (f[9] & 0x7f)) {
+			fp_ask_remote(f + i);
+	} else if (f[1] == FP_STATE && f[2] >= 7 && (f[9] & 0x1f) == 2 && (f[9] & 0x80)) {
+		/* connected and bonded */
+		fp_ask_remote(f + 3);
+	} else if (f[1] == FP_VERSION && f[2] >= 8 && fp->version != (f[10] << 8 | f[9])) {
+		/* Each question gets an answer, only news are logged. */
+		fp->version = f[10] << 8 | f[9];
+		puts("menu: bluetooth remote firmware ");
+		putdec(f[10]);
+		putc('.');
+		putdec(f[9]);
+		putc('\n');
+	} else if (f[1] == FP_BATTERY && f[2] >= 7 && (f[9] & 0x7f) && fp->battery != (f[9] & 0x7f)) {
 		/* 0 is no report yet. */
 		fp->battery = f[9] & 0x7f;
 		puts("menu: bluetooth remote battery ");
@@ -731,7 +758,7 @@ static enum action bt_key(struct remote *rc, u64 now)
 		heard(rc, SRC_BT, now);
 		rc->code = (u32)keys;
 		/* By now the remote is connected, at power-on it may not have been. */
-		if (rc->fp.battery < 0 && now - rc->fp.asked > ms(FP_ASK_MS))
+		if ((rc->fp.battery < 0 || !rc->fp.version) && now - rc->fp.asked > ms(FP_ASK_MS))
 			fp_ask(&rc->fp);
 		if (!rc->bt || rc->held != act) {
 			rc->held = act;
@@ -1159,7 +1186,7 @@ static void ir_test(struct screen *s, struct remote *rc)
 			fp_report(f, count, p);
 			if (fp_checked(f, count)) {
 				fp_answer(&rc->fp, f);
-				if (f[1] == FP_TAG_KEYS && rc->fp.battery < 0 &&
+				if (f[1] == FP_TAG_KEYS && (rc->fp.battery < 0 || !rc->fp.version) &&
 				    ticks() - rc->fp.asked > ms(FP_ASK_MS))
 					fp_ask(&rc->fp);
 			}
@@ -1383,6 +1410,7 @@ int menu_main(int argc, char * const argv[])
 	unsigned long cfg_addr, result_addr, logo_addr;
 	u32 cfg_len;
 	int selected, remaining, redraw = 1, held = 0, shown = SRC_NONE, info = 0, battery = -1, rssi = 0;
+	int version = 0, info_battery = -1;
 	u64 deadline, second;
 	struct remote rc;
 	char fallback[FALLBACK_MAX];
@@ -1513,9 +1541,19 @@ int menu_main(int argc, char * const argv[])
 			rssi = bt ? rc.fp.rssi : 0;
 			redraw = 1;
 		}
+		/* The remote may connect only now; later on a key or its connect asks again. */
+		if ((rc.fp.battery < 0 || !rc.fp.version) && rc.fp.tries < FP_ASK_TRIES &&
+		    ticks() - rc.fp.asked > ms(FP_ASK_MS)) {
+			rc.fp.tries++;
+			fp_ask(&rc.fp);
+		}
+		if (info && (rc.fp.version != version || rc.fp.battery != info_battery))
+			redraw = 1;
 		if (redraw) {
+			version = rc.fp.version;
+			info_battery = rc.fp.battery;
 			if (info)
-				draw_info(&back);
+				draw_info(&back, version, info_battery);
 			else
 				draw_menu(&back, &cfg, selected, remaining, shown, battery, rssi);
 			present(&screen, &back, MENU_TOP);
