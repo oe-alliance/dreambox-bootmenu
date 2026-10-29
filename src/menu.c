@@ -7,7 +7,8 @@
  *
  * u-boot starts it with
  *
- *     go <load> <cfg> <cfglen> <result> [<fb> [<width> <height> [<logo>]]]
+ *     go <load> <cfg> <cfglen> <result> [<fb> [<width> <height> [<logo>
+ *        [<backup> [<record> [<stamp> [<mode>]]]]]]]
  *
  * where <cfg>/<cfglen> describe a bootconfig.txt already read into memory and
  * <result> is the address the chosen entry is written to.  The program never
@@ -42,7 +43,7 @@ typedef unsigned long u64;
 
 #define RC_TOGGLE	0x80u		/* set in the second frame of a press */
 
-#define BOOTMENU_VERSION	"1.7"	/* a change here tags a release */
+#define BOOTMENU_VERSION	"1.8"	/* a change here tags a release */
 
 #define RESULT_MAGIC	0x4d454e55u	/* "MENU" */
 
@@ -1280,7 +1281,7 @@ static int fallback_config(char *buf, const char *mode)
 /* The video mode from u-boot, letters and digits only, e.g. 1080p50hz. */
 static const char *video_mode(int argc, char * const argv[])
 {
-	const char *s = argc > 10 ? argv[10] : "";
+	const char *s = argc > 11 ? argv[11] : "";
 	int i;
 
 	for (i = 0; s[i]; i++)
@@ -1293,11 +1294,20 @@ static const char *video_mode(int argc, char * const argv[])
  * The entry last started from the menu is kept in a sector of its own, the
  * last one of the u-boot-env partition; the environment itself only takes the
  * first 64 KB of it.  So images that never set default= in bootconfig.txt still
- * start with the slot booted last.  Once an image changes default=, the file
- * wins again: the record also holds the default= it was written against.
+ * start with the slot booted last.  Once anything writes bootconfig.txt, the
+ * file wins again, even when it writes the same default= back: the record
+ * also holds the inode and ctime of the file it was written against.
  */
-#define REC_MAGIC	0x4c4d4d42u	/* "BMML" */
+#define REC_MAGIC	0x324d4d42u	/* "BMM2" */
+#define REC_MAGIC_V1	0x4c4d4d42u	/* "BMML", up to 1.7, without the stamp */
 #define SECTOR		512
+
+/* What tells one write of bootconfig.txt from the next, see ext4_step(). */
+struct stamp {
+	u32 ino;		/* 0 when it could not be read */
+	u32 ctime;
+	u32 ctime_extra;
+};
 
 struct last_boot {
 	u32 magic;
@@ -1305,11 +1315,16 @@ struct last_boot {
 	u32 seen;		/* default= of bootconfig.txt at that time */
 	u32 count;		/* number of entries at that time */
 	u32 check;
+	struct stamp file;	/* of bootconfig.txt at that time */
 };
 
 static u32 rec_check(const struct last_boot *r)
 {
-	return r->magic ^ r->last ^ r->seen ^ r->count ^ 0x5a5aa5a5u;
+	u32 c = r->magic ^ r->last ^ r->seen ^ r->count ^ 0x5a5aa5a5u;
+
+	if (r->magic == REC_MAGIC)
+		c ^= r->file.ino ^ r->file.ctime ^ r->file.ctime_extra;
+	return c;
 }
 
 static int rec_valid(const struct last_boot *r)
@@ -1317,15 +1332,21 @@ static int rec_valid(const struct last_boot *r)
 	return r->magic == REC_MAGIC && r->check == rec_check(r);
 }
 
-/* Writes a record only over itself or over a sector that is all zero. */
-static int rec_update(struct last_boot *r, int selected, int seen, int count)
+static int same_stamp(const struct stamp *a, const struct stamp *b)
+{
+	return a->ino && a->ino == b->ino && a->ctime == b->ctime && a->ctime_extra == b->ctime_extra;
+}
+
+/* Writes a record only over itself, over one of 1.7 or over a sector that is all zero. */
+static int rec_update(struct last_boot *r, int selected, int seen, int count, const struct stamp *file)
 {
 	const u8 *b = (const u8 *)r;
 	int i;
 
-	if (rec_valid(r) && r->last == (u32)selected && r->seen == (u32)seen && r->count == (u32)count)
+	if (rec_valid(r) && r->last == (u32)selected && r->seen == (u32)seen && r->count == (u32)count &&
+	    r->file.ino == file->ino && r->file.ctime == file->ctime && r->file.ctime_extra == file->ctime_extra)
 		return 0;
-	if (!rec_valid(r))
+	if (!rec_valid(r) && !(r->magic == REC_MAGIC_V1 && r->check == rec_check(r)))
 		for (i = 0; i < SECTOR; i++)
 			if (b[i])
 				return 0;
@@ -1333,6 +1354,7 @@ static int rec_update(struct last_boot *r, int selected, int seen, int count)
 	r->last = (u32)selected;
 	r->seen = (u32)seen;
 	r->count = (u32)count;
+	r->file = *file;
 	r->check = rec_check(r);
 	return 1;
 }
@@ -1358,13 +1380,33 @@ static char *emit_hex(char *p, u64 value)
 /*
  * "go <load> gpt <gpt> <result>": the script read sectors 0 to 33 of the eMMC
  * to <gpt>; hands back the last sector of the u-boot-env partition as
- * bm_recblk, in the same result format as the menu.
+ * bm_recblk and the first one of dreambox-data as bm_datablk, in the same
+ * result format as the menu.
  */
+static int part_named(const u8 *e, const char *name)
+{
+	int k;
+
+	for (k = 0; name[k]; k++)
+		if (e[56 + 2 * k] != (u8)name[k] || e[57 + 2 * k])
+			return 0;
+	return !e[56 + 2 * k] && !e[57 + 2 * k];
+}
+
+static void write_text(unsigned long addr, const char *text, const char *end)
+{
+	writel(addr + 4, 0);
+	writel(addr + 8, 0);
+	writel(addr + 12, (u32)(end - text));
+	writel(addr, RESULT_MAGIC);
+}
+
 static int find_record(unsigned long gpt, unsigned long addr)
 {
-	static const char name[] = "u-boot-env";
 	const u8 *h = (const u8 *)(gpt + SECTOR);
-	u32 n, size, i, k;
+	char *text = (char *)(addr + 0x10), *p = text;
+	u64 rec = 0, data = 0;
+	u32 n, size, i;
 
 	for (i = 0; i < 8; i++)
 		if (h[i] != (u8)"EFI PART"[i])
@@ -1376,27 +1418,189 @@ static int find_record(unsigned long gpt, unsigned long addr)
 	for (i = 0; i < n; i++) {
 		const u8 *e = (const u8 *)(gpt + 2 * SECTOR + i * size);
 		u64 first = le64(e + 32), last = le64(e + 40);
-		char *text = (char *)(addr + 0x10), *p = text;
 
-		for (k = 0; k < sizeof(name); k++)
-			if (e[56 + 2 * k] != (u8)name[k] || e[57 + 2 * k])
-				break;
-		if (k < sizeof(name))
-			continue;
 		/* Far beyond the 64 KB of the environment, or not at all. */
-		if (last < first + 1024)
-			return 1;
-		p = emit(p, "bm_recblk=");
-		p = emit_hex(p, last);
-		*p++ = '\n';
-		*p++ = 0;
-		writel(addr + 4, 0);
-		writel(addr + 8, 0);
-		writel(addr + 12, (u32)(p - text));
-		writel(addr, RESULT_MAGIC);
-		return 0;
+		if (part_named(e, "u-boot-env") && last >= first + 1024)
+			rec = last;
+		else if (part_named(e, "dreambox-data"))
+			data = first;
 	}
+	if (!rec)
+		return 1;
+	p = emit(p, "bm_recblk=");
+	p = emit_hex(p, rec);
+	if (data) {
+		p = emit(p, "\nbm_datablk=");
+		p = emit_hex(p, data);
+	}
+	*p++ = '\n';
+	*p++ = 0;
+	write_text(addr, text, p);
+	return 0;
+}
+
+/*
+ * "go <load> ext4 <ext> <blk> <result> <datablk> <step> <ino>": finds the
+ * inode of /bootconfig.txt on dreambox-data, one read of the script per step,
+ * since a standalone program cannot read the eMMC itself.  <ext> holds the
+ * first 32 KB of the partition (superblock and group descriptors), <blk> what
+ * the step before asked for, zeroed beforehand.  Each step hands back
+ * bm_step/bm_ino for the next call and bm_rd/bm_rn for the read before it;
+ * the last one writes the stamp to <ext> and hands back its address as
+ * bm_st.  Anything unexpected ends it without a result, then no stamp.
+ */
+#define EXT_LEN		0x8000
+#define BLK_LEN		0x10000
+
+static u32 le16(const u8 *p)
+{
+	return p[0] | p[1] << 8;
+}
+
+struct ext4 {
+	u32 bs;			/* block size */
+	u32 ipg;		/* inodes per group */
+	u32 isz;		/* inode size */
+	u32 groups;
+	u32 gd;			/* offset of the group descriptors in <ext> */
+	u32 dsz;		/* size of one */
+	int wide;		/* 64 bit block numbers */
+};
+
+static int ext4_super(const u8 *ext, struct ext4 *fs)
+{
+	const u8 *sb = ext + 1024;
+	u32 log = le32(sb + 0x18), incompat = le32(sb + 0x60);
+
+	if (le16(sb + 0x38) != 0xef53 || log > 6 || (incompat & 0x10))	/* meta_bg */
+		return 0;
+	fs->bs = 1024u << log;
+	fs->ipg = le32(sb + 0x28);
+	fs->isz = le32(sb + 0x4c) ? le16(sb + 0x58) : 128;
+	fs->wide = (incompat & 0x80) != 0;
+	fs->dsz = fs->wide ? le16(sb + 0xfe) : 32;
+	fs->gd = (le32(sb + 0x14) + 1) * fs->bs;
+	if (!fs->ipg || fs->isz < 128 || fs->isz > fs->bs || fs->dsz < 32)
+		return 0;
+	fs->groups = (le32(sb) + fs->ipg - 1) / fs->ipg;
 	return 1;
+}
+
+/* Block of the eMMC with inode ino, and where in the block it lies. */
+static int ext4_inode(const u8 *ext, const struct ext4 *fs, u64 datablk, u32 ino, u64 *lba, u32 *off)
+{
+	u32 g = (ino - 1) / fs->ipg, byte = (ino - 1) % fs->ipg * fs->isz;
+	const u8 *d = ext + fs->gd + g * fs->dsz;
+	u64 table;
+
+	if (!ino || g >= fs->groups || fs->gd + (g + 1) * fs->dsz > EXT_LEN)
+		return 0;
+	table = le32(d + 8);
+	if (fs->wide && fs->dsz >= 64)
+		table |= (u64)le32(d + 0x28) << 32;
+	*lba = datablk + (table + byte / fs->bs) * (fs->bs / SECTOR);
+	*off = byte % fs->bs;
+	return 1;
+}
+
+/* Start and length of the first extent, the root directory needs no more. */
+static int ext4_extent(const u8 *inode, const struct ext4 *fs, u64 *start, u32 *len)
+{
+	const u8 *x = inode + 0x28, *e = x + 12;
+
+	if (!(le32(inode + 0x20) & 0x80000) || le16(x) != 0xf30a || !le16(x + 2) || le16(x + 6))
+		return 0;
+	*start = le32(e + 8) | (u64)le16(e + 6) << 32;
+	*len = le16(e + 4) & 0x7fff;
+	if (*len * fs->bs > BLK_LEN)
+		*len = BLK_LEN / fs->bs;
+	return *len != 0;
+}
+
+static u32 ext4_lookup(const u8 *blk, const char *name)
+{
+	u32 at = 0;
+
+	while (at + 8 <= BLK_LEN) {
+		const u8 *d = blk + at;
+		u32 len = le16(d + 4), n = d[6], k;
+
+		if (len < 8)
+			break;
+		if (le32(d) && n && at + 8 + n <= BLK_LEN) {
+			for (k = 0; k < n && name[k] == (char)d[8 + k]; k++)
+				;
+			if (k == n && !name[k])
+				return le32(d);
+		}
+		at += len;
+	}
+	return 0;
+}
+
+static int ext4_step(int argc, char * const argv[])
+{
+	const u8 *ext = (const u8 *)parse_arg(argv[2]);
+	const u8 *blk = (const u8 *)parse_arg(argv[3]);
+	unsigned long addr = parse_arg(argv[4]);
+	u64 datablk = parse_arg(argv[5]), lba;
+	u32 step = (u32)parse_arg(argv[6]), ino = (u32)parse_arg(argv[7]), off, len;
+	char *text = (char *)(addr + 0x10), *p = text;
+	struct ext4 fs;
+
+	if (argc != 8 || !datablk || !ext4_super(ext, &fs))
+		return 1;
+	if (step == 1) {
+		/* The root directory is inode 2. */
+		ino = 2;
+		if (!ext4_inode(ext, &fs, datablk, ino, &lba, &off))
+			return 1;
+		len = fs.bs / SECTOR;
+	} else if (step == 2) {
+		u64 start;
+
+		if (!ext4_inode(ext, &fs, datablk, ino, &lba, &off) || !ext4_extent(blk + off, &fs, &start, &len))
+			return 1;
+		lba = datablk + start * (fs.bs / SECTOR);
+		len *= fs.bs / SECTOR;
+	} else if (step == 3) {
+		ino = ext4_lookup(blk, "bootconfig.txt");
+		if (!ext4_inode(ext, &fs, datablk, ino, &lba, &off))
+			return 1;
+		len = fs.bs / SECTOR;
+	} else if (step == 4) {
+		const u8 *inode;
+		struct stamp *st = (struct stamp *)ext;
+
+		if (!ext4_inode(ext, &fs, datablk, ino, &lba, &off))
+			return 1;
+		inode = blk + off;
+		st->ctime = le32(inode + 0x0c);
+		/* Nanoseconds, if the inode is large enough to hold them. */
+		st->ctime_extra = fs.isz > 128 && le16(inode + 0x80) >= 8 ? le32(inode + 0x84) : 0;
+		st->ino = ino;
+		p = emit(p, "bm_st=");
+		p = emit_hex(p, (unsigned long)ext);
+		p = emit(p, "\nbm_rn=0\n");
+		*p++ = 0;
+		write_text(addr, text, p);
+		return 0;
+	} else {
+		return 1;
+	}
+	/* Hex like everything parse_arg() reads. */
+	p = emit(p, "bm_step=");
+	p = emit_hex(p, step + 1);
+	p = emit(p, "\nbm_ino=");
+	p = emit_hex(p, ino);
+	p = emit(p, "\nbm_rd=");
+	p = emit_hex(p, lba);
+	p = emit(p, "\nbm_rn=");
+	p = emit_hex(p, len);
+	*p++ = '\n';
+	*p++ = 0;
+	write_text(addr, text, p);
+	return 0;
 }
 
 /* Linked first, at the load address, so "go" lands here. */
@@ -1415,11 +1619,14 @@ int menu_main(int argc, char * const argv[])
 	struct remote rc;
 	char fallback[FALLBACK_MAX];
 	struct last_boot *rec;
+	struct stamp file = { 0, 0, 0 };
 	int file_def;
 
 	/* "go" passes its own address as argv[0], the arguments follow. */
 	if (argc == 4 && argv[1][0] == 'g')
 		return find_record(parse_arg(argv[2]), parse_arg(argv[3]));
+	if (argc > 1 && argv[1][0] == 'e')
+		return ext4_step(argc, argv);
 	if (argc < 4) {
 		puts("menu: go <load> <cfg> <cfglen> <result> "
 		     "[<fb> [<width> <height> [<logo>]]]\n");
@@ -1453,10 +1660,27 @@ int menu_main(int argc, char * const argv[])
 
 	file_def = cfg.def;
 	rec = argc > 9 && cfg.source != CFG_BUILTIN ? (struct last_boot *)parse_arg(argv[9]) : 0;
+	if (argc > 10 && parse_arg(argv[10]))
+		file = *(const struct stamp *)parse_arg(argv[10]);
+	if (file.ino) {
+		puts("menu: bootconfig.txt inode ");
+		putdec((int)file.ino);
+		puts(" ctime ");
+		puthex(file.ctime);
+		puts(".");
+		puthex(file.ctime_extra);
+		puts("\n");
+	}
 	if (rec && rec_valid(rec) && rec->seen == (u32)file_def && rec->count == (u32)cfg.count &&
 	    rec->last < (u32)cfg.count && rec->last != (u32)file_def) {
-		puts("menu: default is the entry started last\n");
-		cfg.def = (int)rec->last;
+		/* Whatever wrote bootconfig.txt since, even the same default= again, wins. */
+		if (cfg.source != CFG_FILE || same_stamp(&file, &rec->file)) {
+			puts("menu: default is the entry started last\n");
+			cfg.def = (int)rec->last;
+		} else {
+			puts(file.ino ? "menu: bootconfig.txt was written since, its default\n" :
+			     "menu: bootconfig.txt could not be checked, its default\n");
+		}
 	}
 
 	cfg.total = cfg.timeout;
@@ -1523,7 +1747,7 @@ int menu_main(int argc, char * const argv[])
 		puts(" (");
 		puts(cfg.entry[selected].title);
 		puts(")\n");
-		write_result(result_addr, &cfg, selected, rec && rec_update(rec, selected, file_def, cfg.count));
+		write_result(result_addr, &cfg, selected, rec && rec_update(rec, selected, file_def, cfg.count, &file));
 		return 0;
 	}
 
@@ -1630,6 +1854,6 @@ int menu_main(int argc, char * const argv[])
 	puts(")\n");
 
 	fade_out(&screen, 24, 40);
-	write_result(result_addr, &cfg, selected, rec && rec_update(rec, selected, file_def, cfg.count));
+	write_result(result_addr, &cfg, selected, rec && rec_update(rec, selected, file_def, cfg.count, &file));
 	return 0;
 }

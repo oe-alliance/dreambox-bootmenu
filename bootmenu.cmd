@@ -30,12 +30,30 @@ if test "x${bm_len}" = "x0"; then if ext4load mmc 1:4 ${bm_cfg} /bootmenu/bootco
 setenv bm_gpt 0x03840000
 setenv bm_rec 0
 setenv bm_recwrite 0
+setenv bm_recblk
+setenv bm_datablk
 setenv bm_ok 0
 if ext4load mmc 1:4 ${bm_app} /bootmenu/bootmenu.bin; then setenv bm_ok 1; dcache flush; icache flush; fi
 if test "x${bm_ok}" = "x1"; then if mmc dev 1; then if mmc read ${bm_gpt} 0 22; then go ${bm_app} gpt ${bm_gpt} ${bm_res}; fi; fi; fi
 setexpr.l bm_magic *${bm_res}
 if itest.l ${bm_magic} == 4d454e55; then setexpr bm_txt ${bm_res} + 10; env import -t ${bm_txt}; if mmc read 0x03830000 ${bm_recblk} 1; then setenv bm_rec 0x03830000; fi; fi
+# Inode and ctime of bootconfig.txt tell the menu whether anything wrote the
+# file since the record, even the same default= again. The program walks
+# dreambox-data in four steps, each names the blocks the script reads for
+# the next; the last hands back the stamp as bm_st. Read only.
+setenv bm_ext 0x03850000
+setenv bm_blk 0x03860000
+setenv bm_st 0
+setenv bm_step 1
+setenv bm_ino 0
+setenv bm_rn 0
+if test "x${bm_rec}" != "x0"; then if test "x${bm_datablk}" != "x"; then if mmc read ${bm_ext} ${bm_datablk} 40; then setenv bm_rn 1; fi; fi; fi
+setenv bm_x 0
+if test "x${bm_rn}" != "x0"; then mw.l ${bm_res} 0 4; go ${bm_app} ext4 ${bm_ext} ${bm_blk} ${bm_res} ${bm_datablk} ${bm_step} ${bm_ino}; setenv bm_rn 0; setexpr.l bm_magic *${bm_res}; if itest.l ${bm_magic} == 4d454e55; then setexpr bm_txt ${bm_res} + 10; env import -t ${bm_txt}; fi; setenv bm_x ${bm_rn}; setenv bm_rn 0; if test "x${bm_x}" != "x0"; then mw.l ${bm_blk} 0 4000; if mmc read ${bm_blk} ${bm_rd} ${bm_x}; then setenv bm_rn ${bm_x}; fi; fi; fi
+if test "x${bm_rn}" != "x0"; then mw.l ${bm_res} 0 4; go ${bm_app} ext4 ${bm_ext} ${bm_blk} ${bm_res} ${bm_datablk} ${bm_step} ${bm_ino}; setenv bm_rn 0; setexpr.l bm_magic *${bm_res}; if itest.l ${bm_magic} == 4d454e55; then setexpr bm_txt ${bm_res} + 10; env import -t ${bm_txt}; fi; setenv bm_x ${bm_rn}; setenv bm_rn 0; if test "x${bm_x}" != "x0"; then mw.l ${bm_blk} 0 4000; if mmc read ${bm_blk} ${bm_rd} ${bm_x}; then setenv bm_rn ${bm_x}; fi; fi; fi
+if test "x${bm_rn}" != "x0"; then mw.l ${bm_res} 0 4; go ${bm_app} ext4 ${bm_ext} ${bm_blk} ${bm_res} ${bm_datablk} ${bm_step} ${bm_ino}; setenv bm_rn 0; setexpr.l bm_magic *${bm_res}; if itest.l ${bm_magic} == 4d454e55; then setexpr bm_txt ${bm_res} + 10; env import -t ${bm_txt}; fi; setenv bm_x ${bm_rn}; setenv bm_rn 0; if test "x${bm_x}" != "x0"; then mw.l ${bm_blk} 0 4000; if mmc read ${bm_blk} ${bm_rd} ${bm_x}; then setenv bm_rn ${bm_x}; fi; fi; fi
+if test "x${bm_rn}" != "x0"; then mw.l ${bm_res} 0 4; go ${bm_app} ext4 ${bm_ext} ${bm_blk} ${bm_res} ${bm_datablk} ${bm_step} ${bm_ino}; setexpr.l bm_magic *${bm_res}; if itest.l ${bm_magic} == 4d454e55; then setexpr bm_txt ${bm_res} + 10; env import -t ${bm_txt}; fi; fi
 mw.l ${bm_res} 0 4
-if test "x${bm_ok}" = "x1"; then go ${bm_app} ${bm_cfg} ${bm_len} ${bm_res} 0x${initrd_high} 500 2d0 ${bm_logo} ${bm_src} ${bm_rec} ${outputmode}; fi
+if test "x${bm_ok}" = "x1"; then go ${bm_app} ${bm_cfg} ${bm_len} ${bm_res} 0x${initrd_high} 500 2d0 ${bm_logo} ${bm_src} ${bm_rec} ${bm_st} ${outputmode}; fi
 setexpr.l bm_magic *${bm_res}
 if itest.l ${bm_magic} == 4d454e55; then setexpr bm_txt ${bm_res} + 10; env import -t ${bm_txt}; setenv bootargs ${bm_arg}; setenv bootcmd "setenv loadaddr 1080000; run bm_cmd"; setenv loadaddr; if test "x${bm_recwrite}" = "x1"; then mmc write ${bm_rec} ${bm_recblk} 1; fi; fi
