@@ -8,9 +8,11 @@
 # and in RGB, which every HDMI TV has to take; some show nothing of the YCbCr
 # u-boot sends otherwise. The image in the second slot may have set no mode or
 # another one, e.g. 1080p60, and the colour space only changes with the mode.
-# An empty value drops out as an argument, so it is compared with a prefix.
-setenv bm_vout "setenv outputmode 1080p50hz; setenv hdmimode 1080p50hz; setenv colorattribute rgb,8bit; osd open; osd clear; bmp scale; vout output 1080p50hz"
-test "x${outputmode} ${colorattribute}" = "x1080p50hz rgb,8bit" || run bm_vout
+# Some TVs keep the mode of the image before, e.g. 2160p with deep colour, and
+# show nothing u-boot sends until a kernel sets the output up again. The output
+# goes off for a second first, so the TV syncs anew.
+setenv bm_vout "hdmitx off; sleep 1; setenv outputmode 1080p50hz; setenv hdmimode 1080p50hz; setenv colorattribute rgb,8bit; osd open; osd clear; bmp scale; vout output 1080p50hz"
+run bm_vout
 setenv bm_logo 0x04000000
 mw.l ${bm_logo} 0 1
 ext4load mmc 1:4 ${bm_logo} /bootmenu/bootlogo.bmp

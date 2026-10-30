@@ -148,7 +148,10 @@ menu uses and every TV takes; RGB is what every HDMI TV has to take, while
 some, such as older Panasonic plasmas, show nothing of the YCbCr u-boot sends
 otherwise. The image in the second slot may have set no mode or another one,
 e.g. 1080p60, and the colour space only changes together with the mode, so
-the script sets both. A TV then needs a few seconds before it shows the
+the script sets both, every time. Some TVs keep the mode of the image before, e.g. 2160p from a DreamOS image, and show
+nothing u-boot sends until a kernel sets the output up again; the script
+therefore turns the output off for a second first, so the TV syncs anew.
+A TV then needs a few seconds before it shows the
 picture again, so the countdown may already have started when the menu
 appears. The image that starts sets its own mode and colour space.
 
